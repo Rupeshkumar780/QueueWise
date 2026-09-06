@@ -9,6 +9,7 @@ export default function Navbar() {
   const [user, setUser] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [customerDashboardUrl, setCustomerDashboardUrl] = useState("/demo");
   const pathname = usePathname();
 
   // If we are on a business page, don't show "For Businesses"
@@ -28,6 +29,8 @@ export default function Navbar() {
       } catch { setUser(null); }
     };
     loadUser();
+    const lastBiz = localStorage.getItem("lastVisitedBusinessId");
+    if (lastBiz) { setCustomerDashboardUrl(`/business/${lastBiz}`); }
     window.addEventListener("storage", loadUser);
     return () => window.removeEventListener("storage", loadUser);
   }, []);
@@ -90,9 +93,14 @@ export default function Navbar() {
                         My Dashboard
                       </Link>
                     ) : (
-                      <Link href="/my-tickets" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setDropdownOpen(false)}>
-                        My Tickets
-                      </Link>
+                      <>
+                        <Link href={customerDashboardUrl} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setDropdownOpen(false)}>
+                          My Dashboard
+                        </Link>
+                        <Link href="/my-tickets" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setDropdownOpen(false)}>
+                          My Tickets
+                        </Link>
+                      </>
                     )}
                     <button onClick={handleLogout} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                       Logout
@@ -131,3 +139,4 @@ export default function Navbar() {
     </nav>
   );
 }
+

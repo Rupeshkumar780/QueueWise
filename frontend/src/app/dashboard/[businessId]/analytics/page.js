@@ -6,31 +6,45 @@ import api from '@/lib/api';
 export default function AnalyticsPage({ params }) {
   const resolvedParams = use(params);
   const businessId = resolvedParams.businessId;
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Mock data for charts
-  const queueCrowd = [12, 25, 42, 38, 20, 15, 30, 45, 35, 18];
-  const timeLabels = ['9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM'];
-  
-  const dailyActivity = [
-    { day: 'Mon', count: 145 },
-    { day: 'Tue', count: 162 },
-    { day: 'Wed', count: 132 },
-    { day: 'Thu', count: 185 },
-    { day: 'Fri', count: 156 },
-  ];
+  useEffect(() => {
+    let isMounted = true;
 
-  const distribution = [
-    { name: 'General Checkup', value: 42, color: 'bg-blue-500' },
-    { name: 'Pharmacy', value: 31, color: 'bg-purple-500' },
-    { name: 'Billing', value: 17, color: 'bg-green-500' },
-    { name: 'Other', value: 10, color: 'bg-gray-400' },
-  ];
+    async function fetchData() {
+      try {
+        const res = await api.get(`/businesses/${businessId}/analytics`);
+        if (isMounted) setData(res.data);
+      } catch (err) {
+        console.error('Failed to fetch analytics', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    fetchData();
 
-  const performance = [
-    { name: 'Counter 1', avg: 5.2 },
-    { name: 'Counter 2', avg: 7.4 },
-    { name: 'Counter 3', avg: 5.7 },
-  ];
+    const refreshInterval = setInterval(fetchData, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(refreshInterval);
+    };
+  }, [businessId]);
+
+  if (loading || !data) {
+    return <div className="p-8 text-center text-gray-500">Loading Analytics...</div>;
+  }
+
+  const {
+    queueCrowd = [],
+    timeLabels = [],
+    dailyActivity = [],
+    distribution = [],
+    performance = []
+  } = data;
+  const crowdScale = Math.max(...queueCrowd, 1);
+  const activityScale = Math.max(...dailyActivity.map((day) => day.count), 1);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -47,10 +61,10 @@ export default function AnalyticsPage({ params }) {
           <div className="h-48 flex items-end gap-2 px-2">
             {queueCrowd.map((val, idx) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full bg-blue-100 rounded-t-md relative group">
+                <div className="w-full h-36 bg-blue-100 rounded-t-md relative group">
                   <div 
                     className="absolute bottom-0 w-full bg-blue-500 rounded-t-md transition-all" 
-                    style={{ height: `${(val / 50) * 100}%` }}
+                    style={{ height: `${(val / crowdScale) * 100}%` }}
                   ></div>
                   <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded">
                     {val}
@@ -72,7 +86,7 @@ export default function AnalyticsPage({ params }) {
                 <div className="flex-1 bg-gray-100 h-6 rounded-full overflow-hidden">
                   <div 
                     className="bg-purple-500 h-full rounded-full" 
-                    style={{ width: `${(day.count / 200) * 100}%` }}
+                    style={{ width: `${(day.count / activityScale) * 100}%` }}
                   ></div>
                 </div>
                 <div className="w-10 text-right text-sm font-bold text-gray-800">{day.count}</div>

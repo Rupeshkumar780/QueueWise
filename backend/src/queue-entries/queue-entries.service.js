@@ -2,9 +2,10 @@ import { Injectable, Dependencies, BadRequestException, NotFoundException } from
 import { PrismaService } from '../prisma/prisma.service';
 import { calculateDistanceKm } from '../utils/geo.util';
 import { EventsGateway } from '../events/events.gateway';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
-@Dependencies(PrismaService, EventsGateway)
+@Dependencies(PrismaService, EventsGateway, RedisService)
 export class QueueEntriesService {
   constructor(prisma, eventsGateway) {
     this.prisma = prisma;
@@ -63,7 +64,17 @@ export class QueueEntriesService {
         }
       }
       
-      const newTokenNumber = queue.currentToken + 1;
+      let newTokenNumber;
+      if (this.redisService?.getClient()) {
+        const redisKey = `queue:${queueId}:token`;
+        newTokenNumber = await this.redisService.incr(redisKey);
+        if (newTokenNumber <= queue.currentToken) {
+           newTokenNumber = queue.currentToken + 1;
+           await this.redisService.set(redisKey, newTokenNumber);
+        }
+      } else {
+        newTokenNumber = queue.currentToken + 1;
+      }
 
       // Update queue token
       await tx.queue.update({
@@ -350,3 +361,6 @@ export class QueueEntriesService {
   }
 
 }
+
+
+

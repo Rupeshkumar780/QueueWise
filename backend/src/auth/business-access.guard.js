@@ -23,6 +23,15 @@ export class BusinessAccessGuard {
 
     if (params.businessId) {
       targetBusinessId = params.businessId;
+    } else if (params.queueId) {
+      const queue = await this.prisma.queue.findUnique({ where: { id: params.queueId } });
+      if (queue) targetBusinessId = queue.businessId;
+    } else if (params.serviceId) {
+      const service = await this.prisma.service.findUnique({ where: { id: params.serviceId } });
+      if (service) targetBusinessId = service.businessId;
+    } else if (params.counterId) {
+      const counter = await this.prisma.counter.findUnique({ where: { id: params.counterId } });
+      if (counter) targetBusinessId = counter.businessId;
     } else if (params.id) {
       const urlPath = request.url || '';
       if (urlPath.includes('/businesses/')) {
@@ -49,11 +58,13 @@ export class BusinessAccessGuard {
       targetBusinessId = body.businessId;
     }
 
+    // FIX A: Prevent "Fail Open" bypass.
     if (!targetBusinessId) {
-      if (request.method === 'POST' && request.route.path === '/v1/businesses') {
+      // Whitelist specific creation endpoints that don't have a businessId yet
+      if (request.method === 'POST' && request.route.path === '/api/v1/businesses') {
         return true;
       }
-      return true;
+      throw new ForbiddenException('Access denied: Unable to resolve target business context.');
     }
 
     const business = await this.prisma.business.findUnique({

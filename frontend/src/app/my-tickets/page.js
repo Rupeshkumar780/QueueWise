@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 export default function MyTicketsPage() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [customerDashboardUrl, setCustomerDashboardUrl] = useState("/demo");
   const router = useRouter();
 
   useEffect(() => {
@@ -27,6 +28,8 @@ export default function MyTicketsPage() {
       }
     }
     fetchTickets();
+    const lastBiz = localStorage.getItem("lastVisitedBusinessId");
+    if (lastBiz) { setCustomerDashboardUrl(`/business/${lastBiz}`); }
   }, [router]);
 
   const activeTickets = tickets.filter(t => ['WAITING', 'CALLED'].includes(t.status));
@@ -42,7 +45,7 @@ export default function MyTicketsPage() {
             <h1 className="text-3xl font-black text-gray-900">My Tickets</h1>
             <p className="text-gray-500 mt-1">Manage your active and past queue reservations.</p>
           </div>
-          <Link href="/business/:id" className="hidden sm:inline-flex bg-gray-900 hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition">
+          <Link href={customerDashboardUrl} className="hidden sm:inline-flex bg-gray-900 hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition">
             Join a New Queue
           </Link>
         </div>
@@ -71,7 +74,7 @@ export default function MyTicketsPage() {
                   </div>
                   <h3 className="text-gray-900 font-bold mb-1">No Active Tickets</h3>
                   <p className="text-sm text-gray-500 mb-6">You are not currently waiting in any queues.</p>
-                  <Link href="/business/:id" className="inline-flex bg-gray-100 hover:bg-gray-200 text-gray-800 px-5 py-2 rounded-xl text-sm font-semibold transition">
+                  <Link href="/business/demo" className="inline-flex bg-gray-100 hover:bg-gray-200 text-gray-800 px-5 py-2 rounded-xl text-sm font-semibold transition">
                     Checkout the Business
                   </Link>
                 </div>
@@ -146,4 +149,5 @@ export default function MyTicketsPage() {
     </div>
   );
 }
+
 

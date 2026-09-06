@@ -125,8 +125,8 @@ export default function JoinQueuePage() {
       console.error(err);
       if (err.message?.includes("already in this queue")) {
         toast.error("You already have an active ticket for this queue.");
-        // Redirect to dashboard where they can see their active queues
-        router.push("/dashboard");
+        // Customers can manage their active tickets from My Tickets.
+        router.push("/my-tickets");
       } else {
         toast.error(err.message || "Failed to join queue");
       }
@@ -149,7 +149,7 @@ export default function JoinQueuePage() {
       
       <main className="flex-grow pt-24 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl w-full mx-auto bg-white rounded-2xl shadow-xl shadow-gray-200/40 border border-gray-100 overflow-hidden">
-          <div className="bg-gray-900 px-6 py-8 text-white relative">
+          <div className="bg-linear-to-br from-gray-800 via-gray-600 to-gray-800 px-6 py-6 text-white relative">
             <button 
               onClick={() => router.back()} 
               className="absolute left-4 top-4 text-gray-400 hover:text-white transition flex items-center gap-1 text-sm font-medium"
@@ -157,7 +157,7 @@ export default function JoinQueuePage() {
               &larr; Back
             </button>
             <div className="mt-4">
-              <span className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-1 block">Join Queue</span>
+              <span className="text-xs mt-10 font-bold text-blue-400 uppercase tracking-widest mb-1 block">Join Queue</span>
               <h1 className="text-2xl font-black">{service.name}</h1>
               <p className="text-gray-400 text-sm mt-1">Estimated wait: ~{service.estimatedDuration} min</p>
             </div>

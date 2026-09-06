@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { io } from "socket.io-client";
 import { fetchAPI } from "../../../lib/api";
-import { Toaster, toast } from "react-hot-toast";
+import { toast } from "react-hot-toast";
 
 export default function LiveQueuePage() {
   const { queueEntryId } = useParams();
@@ -12,6 +12,23 @@ export default function LiveQueuePage() {
   
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  const notify = (msg) => {
+    // Basic toast notification
+    toast(msg, { icon: '🔔', duration: 5000 });
+    
+    // Vibrate device if supported
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate([200, 100, 200]);
+    }
+
+    // Web Push Notification
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("QueueWise Update", { body: msg });
+    }
+  };
 
   const fetchEntry = async () => {
     try {
@@ -62,21 +79,6 @@ export default function LiveQueuePage() {
     };
   }, [queueEntryId]);
 
-  const notify = (msg) => {
-    // Basic toast notification
-    toast(msg, { icon: '🔔', duration: 5000 });
-    
-    // Vibrate device if supported
-    if (typeof navigator !== "undefined" && navigator.vibrate) {
-      navigator.vibrate([200, 100, 200]);
-    }
-
-    // Web Push Notification
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("QueueWise Update", { body: msg });
-    }
-  };
-
   const requestNotificationPermission = () => {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission().then(permission => {
@@ -88,14 +90,17 @@ export default function LiveQueuePage() {
   };
 
   const handleLeave = async () => {
-    // using custom modal later, for now confirm
-    if(confirm("Are you sure you want to leave the queue?")) {
-      try {
-        await fetchAPI(`/queue-entries/${queueEntryId}/cancel`, { method: 'POST' });
-        router.push('/');
-      } catch (err) {
-        toast.error("Failed to cancel ticket");
-      }
+    if (cancelling) return;
+
+    setCancelling(true);
+    try {
+      await fetchAPI(`/queue-entries/${queueEntryId}/cancel`, { method: 'POST' });
+      toast.success("Ticket cancelled successfully.");
+      router.push('/my-tickets');
+    } catch (err) {
+      toast.error(err.message || "Failed to cancel ticket");
+      setCancelling(false);
+      setShowCancelConfirm(false);
     }
   }
 
@@ -121,7 +126,13 @@ export default function LiveQueuePage() {
 
   return (
     <div className="min-h-screen bg-linear-to-br from-gray-900 via-gray-700 to-gray-900 p-4 sm:p-6 flex flex-col items-center justify-center font-sans">
-      <Toaster position="top-center" toastOptions={{ duration: 5000 }} />
+            {/* Back Button */}
+      <div className="w-full max-w-md mb-4">
+        <button onClick={() => router.push('/my-tickets')} className="text-white/80 hover:text-white flex items-center gap-2 text-sm font-medium transition">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          Back to My Tickets
+        </button>
+      </div>
       
       {/* Enable notifications banner */}
       {typeof window !== 'undefined' && "Notification" in window && Notification.permission !== "granted" && (
@@ -208,11 +219,40 @@ export default function LiveQueuePage() {
 
       {(entry.status === 'WAITING' || entry.status === 'CALLED') && (
         <button 
-          onClick={handleLeave}
+          onClick={() => setShowCancelConfirm(true)}
           className="mt-8 text-gray-400 font-medium text-sm hover:text-white transition-colors"
         >
           Cancel Ticket
         </button>
+      )}
+
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-gray-900">Cancel this ticket?</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              You will leave the queue and lose your current position.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={cancelling}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Keep Ticket
+              </button>
+              <button
+                type="button"
+                onClick={handleLeave}
+                disabled={cancelling}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {cancelling ? 'Cancelling...' : 'Cancel Ticket'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

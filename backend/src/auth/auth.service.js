@@ -20,7 +20,7 @@ export class AuthService {
       name: data.name,
       email: data.email,
       passwordHash,
-      role: data.role || 'CUSTOMER',
+      role: data.role === 'BUSINESS_ADMIN' ? 'BUSINESS_ADMIN' : 'CUSTOMER',
     });
 
     return this.login(user);
@@ -54,4 +54,5 @@ export class AuthService {
     return { success: true, message: 'Password updated successfully' };
   }
 }
+
 

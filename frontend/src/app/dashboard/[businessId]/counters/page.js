@@ -4,6 +4,12 @@ import { useEffect, useState, use } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 
+const counterStatusColors = {
+  AVAILABLE: '#16a34a',
+  BUSY: '#d97706',
+  OFFLINE: '#dc2626'
+};
+
 export default function CountersPage({ params }) {
   const resolvedParams = use(params);
   const businessId = resolvedParams.businessId;
@@ -326,11 +332,12 @@ export default function CountersPage({ params }) {
                         disabled={updatingCounterId === counter.id}
                         onChange={(e) => handleToggleCounterStatus(counter, e.target.value)}
                         aria-busy={updatingCounterId === counter.id}
-                        className={`text-sm font-bold border-0 bg-transparent cursor-pointer focus:ring-0 disabled:cursor-wait disabled:opacity-60 ${counter.status === 'OFFLINE' ? 'text-gray-400' : 'text-green-600'}`}
+                        style={{ color: counterStatusColors[counter.status] || counterStatusColors.OFFLINE }}
+                        className="text-sm font-bold border-0 bg-transparent cursor-pointer focus:ring-0 disabled:cursor-wait disabled:opacity-60"
                       >
-                        <option value="AVAILABLE">Available</option>
-                        <option value="BUSY">Busy</option>
-                        <option value="OFFLINE">Offline</option>
+                        <option value="AVAILABLE" style={{ color: counterStatusColors.AVAILABLE }}>Available</option>
+                        <option value="BUSY" style={{ color: counterStatusColors.BUSY }}>Busy</option>
+                        <option value="OFFLINE" style={{ color: counterStatusColors.OFFLINE }}>Offline</option>
                       </select>
                       {updatingCounterId === counter.id && (
                         <span className="text-xs font-medium text-blue-600" role="status">Updating...</span>

@@ -1,11 +1,13 @@
 import { Injectable, Dependencies, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
-@Dependencies(PrismaService)
+@Dependencies(PrismaService, RedisService)
 export class BusinessesService {
-  constructor(prisma) {
+  constructor(prisma, redisService) {
     this.prisma = prisma;
+    this.redisService = redisService;
   }
 
   async create(data, ownerId) {
@@ -119,7 +121,119 @@ export class BusinessesService {
     return result;
   }
 
+  async getAnalytics(businessId) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Get all queues for this business
+    const queues = await this.prisma.queue.findMany({
+      where: { businessId },
+      include: { service: true }
+    });
+
+    const queueIds = queues.map(q => q.id);
+
+    // Get today's entries
+    const todayEntries = await this.prisma.queueEntry.findMany({
+      where: {
+        queueId: { in: queueIds },
+        joinedAt: { gte: today }
+      }
+    });
+
+    // 1. DISTRIBUTION: Tickets per service today
+    const distribution = queues.map(q => {
+      const count = todayEntries.filter(e => e.queueId === q.id).length;
+      return {
+        name: q.service.name,
+        value: count || 0,
+        color: 'bg-blue-500' // Frontend handles cycling colors if needed
+      };
+    });
+
+    // 2. PERFORMANCE: Real wait time calculation
+    const completedToday = todayEntries.filter(e => e.status === 'COMPLETED' && e.completedAt);
+    let avgWaitTime = 0;
+    if (completedToday.length > 0) {
+      const totalWaitMs = completedToday.reduce((sum, e) => sum + (e.completedAt.getTime() - e.joinedAt.getTime()), 0);
+      avgWaitTime = Math.round((totalWaitMs / completedToday.length) / 60000); // in minutes
+    }
+
+    const performance = [
+      { name: 'Avg Wait Time (mins)', avg: avgWaitTime },
+      { name: 'Total Served Today', avg: completedToday.length }
+    ];
+
+    // 3. QUEUE CROWD TODAY: Real bucketing by hour (extended to late night)
+    const queueCrowd = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    const timeLabels = ['9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM', '10PM', '11PM'];
+    
+    todayEntries.forEach(entry => {
+      const hour = entry.joinedAt.getHours();
+      if (hour >= 9 && hour <= 23) {
+        queueCrowd[hour - 9]++;
+      }
+    });
+
+    // 4. DAILY ACTIVITY: Real data for the current Monday-Sunday week
+    const weekStart = new Date();
+    const dayOfWeek = weekStart.getDay();
+    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    weekStart.setDate(weekStart.getDate() - daysSinceMonday);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    const recentEntries = await this.prisma.queueEntry.findMany({
+      where: {
+        queueId: { in: queueIds },
+        completedAt: { gte: weekStart, lt: weekEnd, not: null },
+        status: 'COMPLETED'
+      }
+    });
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dailyMap = {};
+    
+    // Initialize Monday through Sunday in chronological order.
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      dailyMap[dayNames[d.getDay()]] = 0;
+    }
+
+    recentEntries.forEach(entry => {
+      const dayName = dayNames[entry.completedAt.getDay()];
+      if (dailyMap[dayName] !== undefined) {
+        dailyMap[dayName]++;
+      }
+    });
+
+    const dailyActivity = Object.keys(dailyMap).map(day => ({ day, count: dailyMap[day] }));
+
+    return {
+      queueCrowd,
+      timeLabels,
+      dailyActivity,
+      distribution,
+      performance
+    };
+  }
+
   async getCustomerLandingData(businessId) {
+    // REDIS CACHE: Check if landing data is cached (Layer 2)
+    const cacheKey = `business:${businessId}:landingData`;
+    if (this.redisService?.getClient()) {
+      try {
+        const cached = await this.redisService.get(cacheKey);
+        if (cached) {
+          return JSON.parse(cached);
+        }
+      } catch (e) {
+        console.error("Redis Cache Read Error", e);
+      }
+    }
     // Fetch business + services + queues (counters belong to business, not queue)
     const [business, businessCounters] = await Promise.all([
       this.prisma.business.findUnique({
@@ -260,7 +374,7 @@ export class BusinessesService {
       };
     });
 
-    return {
+    const responseData = {
       business: {
         id: business.id,
         name: business.name,
@@ -279,6 +393,17 @@ export class BusinessesService {
       },
       chartData
     };
+
+    // REDIS CACHE: Save to cache with 10 seconds TTL
+    if (this.redisService?.getClient()) {
+      try {
+        await this.redisService.set(cacheKey, JSON.stringify(responseData), 10);
+      } catch (e) {
+        console.error("Redis Cache Write Error", e);
+      }
+    }
+
+    return responseData;
   }
 
   async getDashboardStats(businessId) {
@@ -397,3 +522,4 @@ export class BusinessesService {
     return { queues, counters, nextUp, nowServing, counterPerformance };
   }
 }
+

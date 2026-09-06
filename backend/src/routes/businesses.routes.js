@@ -71,6 +71,14 @@ export class BusinessesController {
 
   @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
   @Roles('BUSINESS_ADMIN', 'STAFF')
+  @Get(':id/analytics')
+  @Bind(Param('id'))
+  getAnalytics(id) {
+    return this.businessesService.getAnalytics(id);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Get(':id/dashboard-stats')
   @Bind(Param('id'))
   getDashboardStats(id) {
