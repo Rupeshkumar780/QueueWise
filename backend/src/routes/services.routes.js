@@ -24,4 +24,10 @@ export class ServicesController {
   findAll(businessId) {
     return this.servicesService.findAllByBusiness(businessId);
   }
+
+  @Get(':id')
+  @Bind(Param('id'))
+  findOne(id) {
+    return this.servicesService.findOne(id);
+  }
 }

@@ -38,5 +38,28 @@ export class AuthController {
   getProfile(req) {
     return req.user;
   }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  @Bind(Request(), Body())
+  async changePassword(req, body) {
+    if (!body.newPassword || body.newPassword.length < 6) {
+      throw new BadRequestException('New password must be at least 6 characters');
+    }
+    return this.authService.changePassword(req.user.id, body.newPassword);
+  }
+
+  @Post('reset-password')
+  @Bind(Body())
+  async resetPassword(body) {
+    const { email, oldPassword, newPassword } = body;
+    if (!newPassword || newPassword.length < 6) throw new BadRequestException('New password must be at least 6 characters');
+    
+    // Validate old password first
+    const user = await this.authService.validateUser(email, oldPassword);
+    if (!user) throw new UnauthorizedException('Invalid current password or email');
+    
+    return this.authService.changePassword(user.id, newPassword);
+  }
 }
 

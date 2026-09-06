@@ -47,5 +47,11 @@ export class AuthService {
       }
     };
   }
+
+  async changePassword(userId, newPassword) {
+    const passwordHash = await argon2.hash(newPassword);
+    await this.usersService.updatePassword(userId, passwordHash);
+    return { success: true, message: 'Password updated successfully' };
+  }
 }
 

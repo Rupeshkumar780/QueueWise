@@ -1,11 +1,13 @@
 import { Injectable, Dependencies, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
-@Dependencies(PrismaService)
+@Dependencies(PrismaService, EventsGateway)
 export class QueuesService {
-  constructor(prisma) {
+  constructor(prisma, eventsGateway) {
     this.prisma = prisma;
+    this.eventsGateway = eventsGateway;
   }
 
   async create(data) {
@@ -26,17 +28,21 @@ export class QueuesService {
   }
 
   async updateStatus(id, status) {
-    return this.prisma.queue.update({
+    const queue = await this.prisma.queue.update({
       where: { id },
       data: { status },
     });
+    this.eventsGateway.broadcastQueueUpdate(queue.id, queue.businessId);
+    return queue;
   }
 
   async updateConfig(id, data) {
-    return this.prisma.queue.update({
+    const queue = await this.prisma.queue.update({
       where: { id },
       data,
     });
+    this.eventsGateway.broadcastQueueUpdate(queue.id, queue.businessId);
+    return queue;
   }
 }
 

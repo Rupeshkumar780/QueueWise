@@ -3,6 +3,7 @@ import { BusinessesService } from '../businesses/businesses.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { BusinessAccessGuard } from '../auth/business-access.guard';
 
 @Controller('v1/businesses')
 @Dependencies(BusinessesService)
@@ -38,12 +39,28 @@ export class BusinessesController {
     return this.businessesService.findOne(id);
   }
   
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('BUSINESS_ADMIN')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':id/update')
   @Bind(Param('id'), Body())
   update(id, data) {
     return this.businessesService.update(id, data);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN')
+  @Post(':id/staff')
+  @Bind(Param('id'), Body())
+  addStaff(id, data) {
+    return this.businessesService.addStaff(id, data);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN')
+  @Post(':id/staff/:userId/remove')
+  @Bind(Param('id'), Param('userId'))
+  removeStaff(id, userId) {
+    return this.businessesService.removeStaff(id, userId);
   }
 
   @Get(':id/customer-landing')
@@ -52,12 +69,16 @@ export class BusinessesController {
     return this.businessesService.getCustomerLandingData(id);
   }
 
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Get(':id/dashboard-stats')
   @Bind(Param('id'))
   getDashboardStats(id) {
     return this.businessesService.getDashboardStats(id);
   }
 
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Get(':id/live-operations')
   @Bind(Param('id'))
   getLiveOperations(id) {

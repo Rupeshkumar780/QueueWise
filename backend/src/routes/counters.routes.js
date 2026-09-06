@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Dependencies, Bind } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Dependencies, Bind } from '@nestjs/common';
 import { CountersService } from '../counters/counters.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { BusinessAccessGuard } from '../auth/business-access.guard';
 
 @Controller('v1/counters')
 @Dependencies(CountersService)
@@ -11,7 +12,7 @@ export class CountersController {
     this.countersService = countersService;
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
   @Roles('BUSINESS_ADMIN')
   @Post(':businessId')
   @Bind(Param('businessId'), Body())
@@ -25,9 +26,19 @@ export class CountersController {
     return this.countersService.findAllByBusiness(businessId);
   }
 
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':id/status')
   @Bind(Param('id'), Body())
   updateStatus(id, body) {
     return this.countersService.updateStatus(id, body.status);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
+  @Delete(':id')
+  @Bind(Param('id'))
+  deleteCounter(id) {
+    return this.countersService.delete(id);
   }
 }

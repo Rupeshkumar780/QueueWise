@@ -24,9 +24,14 @@ export class BusinessesService {
     });
   }
 
-  async findMine(ownerId) {
+  async findMine(userId) {
     return this.prisma.business.findMany({
-      where: { ownerId },
+      where: {
+        OR: [
+          { ownerId: userId },
+          { staff: { some: { id: userId } } }
+        ]
+      },
     });
   }
 
@@ -47,38 +52,211 @@ export class BusinessesService {
   }
 
   async findOne(id) {
-    const business = await this.prisma.business.findUnique({ where: { id } });
+    const business = await this.prisma.business.findUnique({ 
+      where: { id },
+      include: {
+        staff: {
+          select: { id: true, name: true, email: true, role: true }
+        }
+      }
+    });
     if (!business) throw new NotFoundException('Business not found');
     return business;
   }
 
-  async getCustomerLandingData(businessId) {
-    const business = await this.prisma.business.findUnique({
+  async addStaff(businessId, data) {
+    // Check if user already exists
+    let user = await this.prisma.user.findUnique({ where: { email: data.email } });
+    if (!user) {
+      const argon2 = require('argon2');
+      const passwordHash = await argon2.hash(data.tempPassword);
+      user = await this.prisma.user.create({
+        data: {
+          name: data.name || data.email.split('@')[0],
+          email: data.email,
+          passwordHash,
+          role: data.role || 'STAFF',
+        }
+      });
+    } else {
+      // Update role if they were CUSTOMER
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { role: data.role || 'STAFF' }
+      });
+    }
+
+    // Link to business
+    return this.prisma.business.update({
       where: { id: businessId },
-      include: {
-        services: {
-          where: { active: true },
-          include: {
-            queues: {
-              where: { status: 'OPEN' }
-            }
-          }
+      data: {
+        staff: {
+          connect: { id: user.id }
+        }
+      }
+    });
+  }
+
+  async removeStaff(businessId, userId) {
+    const result = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        staff: {
+          disconnect: { id: userId }
         }
       }
     });
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { staffAt: true, businesses: true }
+    });
+
+    if (user && user.staffAt.length === 0 && user.businesses.length === 0 && user.role === 'STAFF') {
+      await this.prisma.user.delete({ where: { id: userId } });
+    }
+
+    return result;
+  }
+
+  async getCustomerLandingData(businessId) {
+    // Fetch business + services + queues (counters belong to business, not queue)
+    const [business, businessCounters] = await Promise.all([
+      this.prisma.business.findUnique({
+        where: { id: businessId },
+        include: {
+          services: {
+            where: { active: true },
+            include: {
+              queues: true  // All queues for this service
+            }
+          }
+        }
+      }),
+      this.prisma.counter.findMany({
+        where: { businessId },
+        select: { id: true, name: true, status: true, supportedServices: true }
+      })
+    ]);
+
     if (!business) throw new NotFoundException('Business not found');
 
     const servicesWithWaitTimes = business.services.map(service => {
-      const activeQueue = service.queues[0];
+      // Find the OPEN queue (if any)
+      const openQueue = service.queues.find(q => q.status === 'OPEN');
+      const anyQueue = service.queues[0]; // fallback
+
+      // Find counters that support this service
+      const serviceCounters = businessCounters.filter(c => 
+        c.supportedServices && c.supportedServices.includes(service.id)
+      );
+
+      // Aggregate counter statuses
+      let counterSummary = null;
+      if (serviceCounters.length > 0) {
+        const total = serviceCounters.length;
+        const activeCounters = serviceCounters.filter(c => c.status !== 'OFFLINE').length;
+        const busyCounters = serviceCounters.filter(c => c.status === 'BUSY').length;
+        const offlineCounters = serviceCounters.filter(c => c.status === 'OFFLINE').length;
+        counterSummary = { total, activeCounters, busyCounters, offlineCounters };
+      }
+
+      // Compute a meaningful display status
+      let displayStatus = openQueue ? openQueue.status : (anyQueue ? anyQueue.status : 'CLOSED');
+      if (counterSummary && counterSummary.activeCounters === 0 && counterSummary.total > 0) {
+        displayStatus = 'OFFLINE'; // All counters offline
+      } else if (counterSummary && counterSummary.busyCounters === counterSummary.activeCounters && counterSummary.busyCounters > 0) {
+        displayStatus = 'BUSY'; // All active counters are busy
+      }
+
       return {
         id: service.id,
         name: service.name,
         description: service.description,
         requiresLocation: service.requiresLocation,
         estimatedDuration: service.estimatedDuration,
-        queueStatus: activeQueue ? activeQueue.status : 'CLOSED',
-        queueId: activeQueue ? activeQueue.id : null,
+        queueStatus: displayStatus,
+        queueId: openQueue ? openQueue.id : (anyQueue ? anyQueue.id : null),
+        counterSummary,
+        queues: service.queues.map(q => ({ id: q.id, status: q.status })),
+      };
+    });
+
+    // 1. Live Queue Intelligence
+    const currentWaiting = await this.prisma.queueEntry.count({
+      where: { queue: { businessId }, status: 'WAITING' }
+    });
+    
+    const activeCounters = await this.prisma.counter.count({
+      where: { businessId, status: { not: 'OFFLINE' } }
+    });
+    const totalCounters = await this.prisma.counter.count({
+      where: { businessId }
+    });
+
+    // Calculate real avg wait time
+    let totalEstWaitMins = 0;
+    const waitingEntries = await this.prisma.queueEntry.findMany({
+      where: { queue: { businessId }, status: 'WAITING' },
+      include: { queue: { include: { service: true } } }
+    });
+    for(let w of waitingEntries) {
+        totalEstWaitMins += (w.queue.service?.estimatedDuration || 15);
+    }
+    const avgWaitTime = currentWaiting > 0 ? Math.ceil(totalEstWaitMins / Math.max(1, activeCounters)) : 0;
+    
+    let queueHealth = '🟢 Normal';
+    if (avgWaitTime > 45) queueHealth = '🔴 Very Busy';
+    else if (avgWaitTime > 20) queueHealth = '🟡 Busy';
+
+    const intelligence = {
+      queueLength: currentWaiting,
+      averageWait: avgWaitTime,
+      countersActive: `${activeCounters} / ${totalCounters}`,
+      queueHealth,
+    };
+
+    // 2. Current Service Activity
+    const nowServing = await this.prisma.queueEntry.findMany({
+      where: { queue: { businessId }, status: { in: ['CALLED', 'SERVING'] } },
+      select: { tokenNumber: true, queue: { select: { tokenPrefix: true, name: true } }, assignedCounterId: true },
+      take: 5
+    });
+
+    const nextUp = await this.prisma.queueEntry.findMany({
+      where: { queue: { businessId }, status: 'WAITING' },
+      orderBy: [{ priority: 'desc' }, { joinedAt: 'asc' }],
+      select: { tokenNumber: true, queue: { select: { tokenPrefix: true } } },
+      take: 5
+    });
+
+    // 3. Chart Data (Real data: Tickets issued in the last 2 hours)
+    const now = new Date();
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    
+    const recentEntries = await this.prisma.queueEntry.findMany({
+      where: { 
+        queue: { businessId },
+        joinedAt: { gte: twoHoursAgo }
+      },
+      select: { joinedAt: true }
+    });
+
+    // Group into 6 buckets (every 20 mins)
+    const buckets = [0, 0, 0, 0, 0, 0];
+    recentEntries.forEach(entry => {
+      const diffMs = now.getTime() - new Date(entry.joinedAt).getTime();
+      const bucketIdx = 5 - Math.floor(diffMs / (20 * 60 * 1000));
+      if (bucketIdx >= 0 && bucketIdx <= 5) {
+        buckets[bucketIdx]++;
+      }
+    });
+
+    const chartData = buckets.map((count, i) => {
+      const time = new Date(now.getTime() - (5 - i) * 20 * 60000);
+      return {
+        time: time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        waiting: count
       };
     });
 
@@ -87,12 +265,19 @@ export class BusinessesService {
         id: business.id,
         name: business.name,
         address: business.address,
+        googleMapsUrl: business.googleMapsUrl,
         isOpen: business.isOpen,
         latitude: business.latitude,
         longitude: business.longitude,
         geofenceRadius: business.geofenceRadius
       },
       services: servicesWithWaitTimes,
+      intelligence,
+      currentActivity: {
+        nowServing,
+        nextUp,
+      },
+      chartData
     };
   }
 
@@ -101,12 +286,12 @@ export class BusinessesService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [totalServed, currentWaiting, activeCounters, openQueues] = await Promise.all([
+    const [totalServed, currentWaiting, activeCounters, totalCounters, openQueues] = await Promise.all([
       this.prisma.queueEntry.count({
         where: {
           queue: { businessId },
           status: 'COMPLETED',
-          createdAt: { gte: today }
+          joinedAt: { gte: today }
         }
       }),
       this.prisma.queueEntry.count({
@@ -116,30 +301,32 @@ export class BusinessesService {
         }
       }),
       this.prisma.counter.count({
-        where: {
-          businessId,
-          status: { in: ['AVAILABLE', 'BUSY'] }
-        }
+        where: { businessId, status: { not: 'OFFLINE' } }
+      }),
+      this.prisma.counter.count({
+        where: { businessId }
       }),
       this.prisma.queue.count({
-        where: {
-          businessId,
-          status: 'OPEN'
-        }
+        where: { businessId, status: 'OPEN' }
       })
     ]);
 
-    return {
-      totalServedToday: totalServed,
-      currentWaiting,
-      activeCounters,
-      openQueues
+    // Dummy avg wait time calculation for UI purposes
+    const avgWaitTime = currentWaiting * 4; 
+
+    return { 
+      totalServedToday: totalServed, 
+      currentWaiting, 
+      activeCounters, 
+      totalCounters,
+      openQueues,
+      avgWaitTime
     };
   }
 
   async getLiveOperations(businessId) {
     // Used for the live ops dashboard view
-    const [queues, counters] = await Promise.all([
+    let [queues, counters, nextUp, nowServing] = await Promise.all([
       this.prisma.queue.findMany({
         where: { businessId },
         include: {
@@ -149,15 +336,64 @@ export class BusinessesService {
             orderBy: [
               { priority: 'desc' },
               { joinedAt: 'asc' }
-            ]
+            ],
+            include: { user: { select: { name: true } } }
           }
         }
       }),
       this.prisma.counter.findMany({
         where: { businessId }
+      }),
+      this.prisma.queueEntry.findMany({
+        where: {
+          queue: { businessId },
+          status: 'WAITING'
+        },
+        orderBy: [
+          { priority: 'desc' },
+          { joinedAt: 'asc' }
+        ],
+        include: { queue: { include: { service: true } }, user: { select: { name: true } } }
+      }),
+      this.prisma.queueEntry.findMany({
+        where: {
+          queue: { businessId },
+          status: { in: ['CALLED', 'SERVING'] }
+        },
+        include: { queue: { include: { service: true } }, user: { select: { name: true, email: true } } }
       })
     ]);
 
-    return { queues, counters };
+    // Apply Progressive Data Visibility Privacy Model
+    const maskWaitingEntry = (entry, index) => {
+      // If they are in the top 3, they are "NEXT UP" - reveal first name only
+      let maskedName = null;
+      if (index < 3 && entry.user?.name) {
+        maskedName = entry.user.name.split(' ')[0]; // First name only
+      }
+
+      return {
+        ...entry,
+        formData: undefined, // completely hide form data
+        user: maskedName ? { name: maskedName } : null,
+      };
+    };
+
+    nextUp = nextUp.map((entry, index) => maskWaitingEntry(entry, index));
+    
+    queues = queues.map(queue => ({
+      ...queue,
+      entries: queue.entries.map((entry, index) => maskWaitingEntry(entry, index))
+    }));
+
+    // Generate dummy counter performance stats for UI
+    const counterPerformance = counters.map(c => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      avgTime: c.status === 'OFFLINE' ? null : (Math.random() * 5 + 3).toFixed(1) // e.g. 5.2m
+    }));
+
+    return { queues, counters, nextUp, nowServing, counterPerformance };
   }
 }

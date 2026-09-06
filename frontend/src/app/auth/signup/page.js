@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -8,6 +8,21 @@ import toast from 'react-hot-toast';
 export default function SignupPage() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [isBusiness, setIsBusiness] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('type') === 'business') {
+        setIsBusiness(true);
+      }
+      // Store redirect param for use after signup
+      const redirect = urlParams.get('redirect');
+      if (redirect) {
+        localStorage.setItem('redirect_after_login', redirect);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,14 +32,26 @@ export default function SignupPage() {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        role: 'BUSINESS_ADMIN'
+        role: isBusiness ? 'BUSINESS_ADMIN' : 'CUSTOMER'
       });
       
       if (res.data && res.data.access_token) {
         localStorage.setItem('token', res.data.access_token);
         localStorage.setItem('user', JSON.stringify(res.data.user));
         toast.success('Account created successfully!');
-        window.location.href = '/onboarding/business';
+        
+        if (isBusiness) {
+          window.location.href = '/onboarding/business';
+        } else {
+          // If customer, redirect back to where they came from (or dashboard)
+          const redirect = typeof window !== 'undefined' ? localStorage.getItem('redirect_after_login') : null;
+          if (redirect) {
+            localStorage.removeItem('redirect_after_login');
+            window.location.href = redirect;
+          } else {
+            window.location.href = '/dashboard';
+          }
+        }
       } else {
         throw new Error('Registration succeeded but no token was returned.');
       }
@@ -36,76 +63,72 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-white to-slate-300 flex flex-col">
-      <div className="flex-1 flex flex-col justify-center py-5 px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-5xl mx-auto">
-          <div className="flex justify-center mb-10">
-            <span className="text-5xl font-black text-red-500 tracking-tighter">Queue</span>
-            <span className="text-5xl font-black text-black tracking-tighter">Wise</span>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+      <div className="flex-1 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md mx-auto">
+          <div className="flex justify-center mb-8">
+            <span className="text-4xl font-black text-red-500 tracking-tighter">Queue</span>
+            <span className="text-4xl font-black text-gray-900 tracking-tighter">Wise</span>
           </div>
-          <h2 className="mt-20 text-center text-3xl font-extrabold text-gray-900">
-            Create your Owner Account
+          
+          {isBusiness && (
+            <div className="flex justify-center mb-4">
+              <span className="inline-flex items-center gap-1.5 bg-gray-900 text-white text-xs font-bold px-3 py-1.5 rounded-full">
+                🏢 Business Registration
+              </span>
+            </div>
+          )}
+
+          <h2 className="text-center text-3xl font-extrabold text-gray-900">
+            {isBusiness ? 'Create your Owner Account' : 'Create a Customer Account'}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Or{' '}
-            <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link href="/auth/login" className="font-semibold text-blue-600 hover:text-blue-500">
               sign in to your existing account
             </Link>
           </p>
         </div>
 
-        <div className="mt-8 w-full max-w-150 mx-auto">
-          <div className="bg-white w-full py-8 px-4 sm:px-6 lg:px-10 shadow-xl shadow-blue-900/5 rounded-xl border border-gray-300">
-            <form className="space-y-6" onSubmit={handleSubmit}>
+        <div className="mt-8 w-full max-w-md mx-auto">
+          <div className="bg-white py-8 px-6 sm:px-10 shadow-xl shadow-gray-200/50 rounded-2xl border border-gray-200">
+            <form className="space-y-5" onSubmit={handleSubmit}>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                <div className="mt-1">
-                  <input
-                    required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  />
-                </div>
+                <input
+                  type="text" required
+                  className="mt-1 appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">Email address</label>
-                <div className="mt-1">
-                  <input
-                    type="email"
-                    required
-                    pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
-                    title="Please provide a valid email address (e.g. name@domain.com)"
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  />
-                </div>
+                <input
+                  type="email" required
+                  className="mt-1 appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">Password</label>
-                <div className="mt-1">
-                  <input
-                    type="password"
-                    required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  />
-                </div>
+                <input
+                  type="password" required minLength={6}
+                  className="mt-1 appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                />
               </div>
 
-              <div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400 transition-colors"
-                >
-                  {loading ? 'Creating account...' : 'Create Account'}
-                </button>
-              </div>
+              <button
+                type="submit" disabled={loading}
+                className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-60"
+              >
+                {loading ? 'Creating account...' : 'Create Account'}
+              </button>
             </form>
           </div>
         </div>

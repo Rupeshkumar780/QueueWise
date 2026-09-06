@@ -9,11 +9,22 @@ export class ServicesService {
   }
 
   async create(businessId, data) {
+    const { formTemplate, ...serviceData } = data;
+    const createData = {
+      ...serviceData,
+      businessId,
+    };
+
+    if (formTemplate && Array.isArray(formTemplate) && formTemplate.length > 0) {
+      createData.formTemplate = {
+        create: {
+          schema: formTemplate
+        }
+      };
+    }
+
     return this.prisma.service.create({
-      data: {
-        ...data,
-        businessId,
-      },
+      data: createData,
     });
   }
 
@@ -21,6 +32,16 @@ export class ServicesService {
     return this.prisma.service.findMany({
       where: { businessId },
       include: { formTemplate: true }
+    });
+  }
+
+  async findOne(id) {
+    return this.prisma.service.findUnique({
+      where: { id },
+      include: { 
+        formTemplate: true,
+        queues: true // Need this to find active queue for the service
+      }
     });
   }
 }

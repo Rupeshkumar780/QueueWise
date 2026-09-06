@@ -26,7 +26,7 @@ export class QueueEntriesService {
     return this.prisma.$transaction(async (tx) => {
       const queue = await tx.queue.findUnique({ 
         where: { id: queueId },
-        include: { branch: true }
+        include: { business: true }
       });
       if (!queue) throw new NotFoundException('Queue not found');
       if (queue.status !== 'OPEN') throw new BadRequestException('Queue is not open');
@@ -42,7 +42,7 @@ export class QueueEntriesService {
       }
 
       // Geofencing Check
-      if (queue.locationRequired && queue.branch.latitude && queue.branch.longitude) {
+      if (queue.locationRequired && queue.business.latitude && queue.business.longitude) {
         if (!locationData || !locationData.lat || !locationData.lng) {
           throw new BadRequestException('Location data is required to join this queue.');
         }
@@ -50,12 +50,12 @@ export class QueueEntriesService {
         const distanceKm = calculateDistanceKm(
           locationData.lat, 
           locationData.lng, 
-          queue.branch.latitude, 
-          queue.branch.longitude
+          queue.business.latitude, 
+          queue.business.longitude
         );
 
         const distanceMeters = distanceKm * 1000;
-        const allowedRadius = queue.branch.geofenceRadius || 100;
+        const allowedRadius = queue.business.geofenceRadius || 100;
 
         // Enforce branch-specific radius limit
         if (distanceKm === null || distanceMeters > allowedRadius) {
@@ -85,7 +85,7 @@ export class QueueEntriesService {
         }
       });
       
-      this.eventsGateway.broadcastQueueUpdate(queueId);
+      this.eventsGateway.broadcastQueueUpdate(queueId, queue.businessId);
       return entry;
     });
   }
@@ -93,15 +93,21 @@ export class QueueEntriesService {
   async cancelEntry(id, userId) {
     const entry = await this.prisma.queueEntry.findUnique({ where: { id } });
     if (!entry) throw new NotFoundException('Entry not found');
-    if (entry.userId !== userId) throw new BadRequestException('Unauthorized');
+    
+    // If not called by admin, check ownership
+    if (userId !== 'ADMIN' && entry.userId !== userId) {
+      throw new BadRequestException('Unauthorized');
+    }
+    
     if (entry.status !== 'WAITING') throw new BadRequestException('Can only cancel waiting entries');
 
     const updated = await this.prisma.queueEntry.update({
       where: { id },
-      data: { status: 'CANCELLED' }
+      data: { status: 'CANCELLED' },
+      include: { queue: true }
     });
     
-    this.eventsGateway.broadcastQueueUpdate(updated.queueId);
+    this.eventsGateway.broadcastQueueUpdate(updated.queueId, updated.queue.businessId);
     return updated;
   }
 
@@ -113,8 +119,8 @@ export class QueueEntriesService {
       include: {
         queue: {
           include: {
-            branch: {
-              select: { name: true, business: { select: { name: true } } }
+            business: {
+              select: { name: true }
             },
             service: { select: { name: true, estimatedDuration: true } }
           }
@@ -142,6 +148,55 @@ export class QueueEntriesService {
     return activeEntries;
   }
 
+  async getEntryById(id, userId) {
+    const entry = await this.prisma.queueEntry.findUnique({
+      where: { id },
+      include: {
+        queue: {
+          include: {
+            business: { select: { name: true } },
+            service: { select: { name: true, estimatedDuration: true } }
+          }
+        }
+      }
+    });
+
+    if (!entry) throw new NotFoundException('Queue entry not found');
+
+    if (entry.assignedCounterId) {
+      const counter = await this.prisma.counter.findUnique({
+        where: { id: entry.assignedCounterId },
+        select: { name: true }
+      });
+      entry.assignedCounter = counter;
+    }
+
+    if (entry.status === 'WAITING') {
+      const peopleAhead = await this.prisma.queueEntry.count({
+        where: {
+          queueId: entry.queueId,
+          status: 'WAITING',
+          tokenNumber: { lt: entry.tokenNumber }
+        }
+      });
+      entry.peopleAhead = peopleAhead;
+      entry.estimatedWaitMins = (peopleAhead + 1) * (entry.queue.service?.estimatedDuration || 15);
+    } else {
+      entry.peopleAhead = 0;
+      entry.estimatedWaitMins = 0;
+    }
+
+    // Now Serving info
+    const nowServing = await this.prisma.queueEntry.findFirst({
+      where: { queueId: entry.queueId, status: { in: ['CALLED', 'SERVING'] } },
+      orderBy: { tokenNumber: 'asc' }
+    });
+    
+    entry.nowServingToken = nowServing ? nowServing.tokenNumber : null;
+
+    return entry;
+  }
+
   async getUserActiveEntries(userId) {
     const activeEntries = await this.prisma.queueEntry.findMany({
       where: {
@@ -151,8 +206,8 @@ export class QueueEntriesService {
       include: {
         queue: {
           include: {
-            branch: {
-              select: { name: true, business: { select: { name: true } } }
+            business: {
+              select: { name: true }
             },
             service: { select: { name: true, estimatedDuration: true } }
           }
@@ -250,5 +305,48 @@ export class QueueEntriesService {
       return entry;
     });
   }
-}
 
+  async getBusinessEntries(businessId) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return this.prisma.queueEntry.findMany({
+      where: {
+        queue: { businessId },
+        joinedAt: { gte: today }
+      },
+      orderBy: { joinedAt: 'desc' },
+      include: {
+        queue: {
+          include: { service: true }
+        },
+        user: { select: { name: true, email: true } }
+      }
+    });
+  }
+
+  async getUserTickets(userId) {
+    if (!userId) throw new BadRequestException('User ID required');
+    const entries = await this.prisma.queueEntry.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        queue: {
+          include: {
+            business: { select: { name: true } },
+            service: { select: { name: true } }
+          }
+        }
+      }
+    });
+    
+    // manual assignedCounter fetch
+    for (const entry of entries) {
+      if (entry.assignedCounterId) {
+        entry.assignedCounter = await this.prisma.counter.findUnique({ where: { id: entry.assignedCounterId }, select: { name: true } });
+      }
+    }
+    return entries;
+  }
+
+}

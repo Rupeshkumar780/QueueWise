@@ -3,6 +3,7 @@ import { QueuesService } from '../queues/queues.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { BusinessAccessGuard } from '../auth/business-access.guard';
 
 @Controller('v1/queues')
 @Dependencies(QueuesService)
@@ -11,7 +12,7 @@ export class QueuesController {
     this.queuesService = queuesService;
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
   @Roles('BUSINESS_ADMIN')
   @Post()
   @Bind(Body())
@@ -25,7 +26,7 @@ export class QueuesController {
     return this.queuesService.findAllByBusiness(businessId);
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
   @Roles('BUSINESS_ADMIN', 'STAFF')
   @Patch(':id')
   @Bind(Param('id'), Body())
@@ -33,7 +34,7 @@ export class QueuesController {
     return this.queuesService.updateConfig(id, data);
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
   @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':id/open')
   @Bind(Param('id'))
@@ -41,7 +42,7 @@ export class QueuesController {
     return this.queuesService.updateStatus(id, 'OPEN');
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
   @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':id/pause')
   @Bind(Param('id'))
@@ -49,8 +50,8 @@ export class QueuesController {
     return this.queuesService.updateStatus(id, 'PAUSED');
   }
 
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('BUSINESS_ADMIN')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':id/close')
   @Bind(Param('id'))
   close(id) {

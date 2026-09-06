@@ -3,6 +3,7 @@ import { QueueEntriesService } from '../queue-entries/queue-entries.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { BusinessAccessGuard } from '../auth/business-access.guard';
 
 @Controller('v1/queue-entries')
 @Dependencies(QueueEntriesService)
@@ -12,47 +13,69 @@ export class QueueEntriesController {
   }
 
   @Post(':queueId/join')
+  @UseGuards(AuthGuard('jwt'))
   @Bind(Param('queueId'), Body(), Request())
   joinQueue(queueId, body, req) {
-    // userId is optional. If they have a token, we could extract it, but for now we pass null for anonymous.
     const userId = req.user?.id || null;
     return this.queueEntriesService.joinQueue(queueId, userId, body.locationData);
   }
 
-  // @UseGuards(AuthGuard('jwt'))
-  @Get('my-status')
+  @UseGuards(AuthGuard('jwt'))
+  @Get('my-tickets')
   @Bind(Request())
-  async getMyStatus(req) {
-    // Retrieve all active queue entries for the logged-in user
-    // FOR TESTING: We return the entries for the first waiting customer
-    return this.queueEntriesService.getTestActiveEntries();
+  async getMyTickets(req) {
+    const userId = req.user?.id;
+    return this.queueEntriesService.getUserTickets(userId);
   }
 
-  // @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get(':id')
+  @Bind(Param('id'), Request())
+  getEntryById(id, req) {
+    const userId = req.user?.id || null;
+    return this.queueEntriesService.getEntryById(id, userId);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
+  @Get('business/:businessId')
+  @Bind(Param('businessId'))
+  getBusinessEntries(businessId) {
+    return this.queueEntriesService.getBusinessEntries(businessId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
   @Post(':id/cancel')
   @Bind(Param('id'), Request())
   cancelEntry(id, req) {
-    return this.queueEntriesService.cancelEntry(id, null);
+    return this.queueEntriesService.cancelEntry(id, req.user.id);
   }
 
-  // @UseGuards(AuthGuard('jwt'), RolesGuard)
-  // @Roles('STAFF', 'BUSINESS_ADMIN')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('BUSINESS_ADMIN', 'STAFF')
+  @Post(':id/admin-cancel')
+  @Bind(Param('id'), Request())
+  adminCancelEntry(id, req) {
+    return this.queueEntriesService.cancelEntry(id, 'ADMIN');
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('STAFF', 'BUSINESS_ADMIN')
   @Post('queue/:queueId/call-next')
   @Bind(Param('queueId'), Body())
   callNext(queueId, body) {
     return this.queueEntriesService.callNext(queueId, body.counterId);
   }
 
-  // @UseGuards(AuthGuard('jwt'), RolesGuard)
-  // @Roles('STAFF', 'BUSINESS_ADMIN')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('STAFF', 'BUSINESS_ADMIN')
   @Post(':id/complete')
   @Bind(Param('id'), Body())
   completeService(id, body) {
     return this.queueEntriesService.completeService(id, body.counterId);
   }
 
-  // @UseGuards(AuthGuard('jwt'), RolesGuard)
-  // @Roles('STAFF', 'BUSINESS_ADMIN')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
+  @Roles('STAFF', 'BUSINESS_ADMIN')
   @Post(':id/no-show')
   @Bind(Param('id'), Body())
   markNoShow(id, body) {
