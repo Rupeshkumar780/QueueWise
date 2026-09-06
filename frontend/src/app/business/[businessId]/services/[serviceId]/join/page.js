@@ -147,7 +147,7 @@ export default function JoinQueuePage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar />
       
-      <main className="flex-grow pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+      <main className="flex grow pt-24 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl w-full mx-auto bg-white rounded-2xl shadow-xl shadow-gray-200/40 border border-gray-100 overflow-hidden">
           <div className="bg-linear-to-br from-gray-800 via-gray-600 to-gray-800 px-6 py-6 text-white relative">
             <button 

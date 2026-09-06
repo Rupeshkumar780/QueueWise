@@ -7,7 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "format": "prettier --write \"**/*.js\"",
-    "start": "babel-node index.js",
+    "build": "babel src -d dist",
+    "start": "node dist/main.js",
     "start:dev": "nodemon",
     "test": "jest",
     "test:cov": "jest --coverage",
@@ -42,6 +43,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@babel/cli": "^7.29.7",
     "@babel/core": "7.26.0",
     "@babel/node": "7.26.0",
     "@babel/plugin-proposal-decorators": "7.25.9",
