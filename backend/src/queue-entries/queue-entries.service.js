@@ -27,7 +27,7 @@ export class QueueEntriesService {
     return this.prisma.$transaction(async (tx) => {
       const queue = await tx.queue.findUnique({ 
         where: { id: queueId },
-        include: { business: true }
+        include: { business: true, service: true }
       });
       if (!queue) throw new NotFoundException('Queue not found');
       if (queue.status !== 'OPEN') throw new BadRequestException('Queue is not open');
@@ -43,7 +43,7 @@ export class QueueEntriesService {
       }
 
       // Geofencing Check
-      if (queue.locationRequired && queue.business.latitude && queue.business.longitude) {
+      if ((queue.locationRequired || queue.service?.requiresLocation) && queue.business.latitude && queue.business.longitude) {
         if (!locationData || !locationData.lat || !locationData.lng) {
           throw new BadRequestException('Location data is required to join this queue.');
         }

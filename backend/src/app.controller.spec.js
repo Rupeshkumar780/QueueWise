@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PrismaService } from './prisma/prisma.service';
 
 describe('AppController', () => {
   let appController;
@@ -8,7 +9,13 @@ describe('AppController', () => {
   beforeEach(async () => {
     const app = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [
+        AppService,
+        {
+          provide: PrismaService,
+          useValue: { $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]) },
+        },
+      ],
     }).compile();
 
     appController = app.get(AppController);
@@ -21,9 +28,10 @@ describe('AppController', () => {
   });
 
   describe('health', () => {
-    it('should return a healthy status', () => {
-      const health = appController.getHealth();
+    it('should return a healthy status after checking the database', async () => {
+      const health = await appController.getHealth();
 
+      expect(appController.prisma.$queryRaw).toHaveBeenCalled();
       expect(health.status).toBe('ok');
       expect(health.timestamp).toEqual(expect.any(String));
       expect(health.uptime).toEqual(expect.any(Number));

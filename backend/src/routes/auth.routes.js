@@ -27,8 +27,13 @@ export class AuthController {
   @Post('login')
   @Bind(Body())
   async login(body) {
+    if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+      throw new BadRequestException('Please provide a valid email format');
+    }
+    if (!body.password) {
+      throw new BadRequestException('Password is required');
+    }
     const user = await this.authService.validateUser(body.email, body.password);
-    if (!user) throw new UnauthorizedException('Invalid credentials');
     return this.authService.login(user);
   }
 

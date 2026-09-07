@@ -28,11 +28,14 @@ export class AuthService {
 
   async validateUser(email, pass) {
     const user = await this.usersService.findByEmail(email);
-    if (user && await argon2.verify(user.passwordHash, pass)) {
-      const { passwordHash, ...result } = user;
-      return result;
+    if (!user) {
+      throw new UnauthorizedException('No account found with this email address');
     }
-    return null;
+    if (!(await argon2.verify(user.passwordHash, pass))) {
+      throw new UnauthorizedException('Incorrect password');
+    }
+    const { passwordHash, ...result } = user;
+    return result;
   }
 
   async login(user) {

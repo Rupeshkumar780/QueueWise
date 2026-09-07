@@ -1,11 +1,13 @@
 import { Controller, Dependencies, Get } from '@nestjs/common';
 import { AppService } from './app.service';
+import { PrismaService } from './prisma/prisma.service';
 
 @Controller()
-@Dependencies(AppService)
+@Dependencies(AppService, PrismaService)
 export class AppController {
-  constructor(appService) {
+  constructor(appService, prisma) {
     this.appService = appService;
+    this.prisma = prisma;
   }
 
   @Get()
@@ -13,8 +15,10 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Get('health')
-  getHealth() {
+  @Get(['health', 'v1/health'])
+  async getHealth() {
+    await this.prisma.$queryRaw`SELECT 1`;
+
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),

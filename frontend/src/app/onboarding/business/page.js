@@ -95,7 +95,7 @@ export default function CreateBusinessPage() {
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700">Organization Name</label>
+                  <label className="block text-sm font-medium text-gray-700">Organization Name <span className="text-red-500">*</span></label>
                   <input
                     required
                     placeholder="e.g. City General Hospital"
@@ -105,7 +105,7 @@ export default function CreateBusinessPage() {
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700">City</label>
+                  <label className="block text-sm font-medium text-gray-700">City <span className="text-red-500">*</span></label>
                   <input
                     required
                     placeholder="e.g. New Delhi"
@@ -130,7 +130,7 @@ export default function CreateBusinessPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Full Address</label>
+                <label className="block text-sm font-medium text-gray-700">Full Address <span className="text-red-500">*</span></label>
                 <textarea
                   required
                   rows={2}
@@ -165,7 +165,7 @@ export default function CreateBusinessPage() {
                 <h3 className="text-sm font-bold text-gray-900 mb-4">Geofencing Configuration</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Latitude</label>
+                    <label className="block text-sm font-medium text-gray-700">Latitude <span className="text-red-500">*</span></label>
                     <input
                       type="number"
                       step="any"
@@ -177,7 +177,7 @@ export default function CreateBusinessPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Longitude</label>
+                    <label className="block text-sm font-medium text-gray-700">Longitude <span className="text-red-500">*</span></label>
                     <input
                       type="number"
                       step="any"
@@ -190,7 +190,7 @@ export default function CreateBusinessPage() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700">Allowed Check-in Radius (meters)</label>
+                  <label className="block text-sm font-medium text-gray-700">Allowed Check-in Radius (meters) <span className="text-red-500">*</span></label>
                   <p className="text-xs text-gray-500 mb-2">Customers must be within this distance to join the queue.</p>
                   <input
                     type="number"
