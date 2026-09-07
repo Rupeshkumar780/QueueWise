@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [isBusiness, setIsBusiness] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -42,14 +44,17 @@ export default function SignupPage() {
         
         if (isBusiness) {
           window.location.href = '/onboarding/business';
+          router.push('/onboarding/business');
         } else {
           // If customer, redirect back to where they came from (or dashboard)
           const redirect = typeof window !== 'undefined' ? localStorage.getItem('redirect_after_login') : null;
           if (redirect) {
             localStorage.removeItem('redirect_after_login');
             window.location.href = redirect;
+            router.push(redirect);
           } else {
             window.location.href = '/dashboard';
+            router.push('/dashboard');
           }
         }
       } else {
@@ -63,7 +68,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+    <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 flex flex-col">
       <div className="flex-1 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
         <div className="w-full max-w-md mx-auto">
           <div className="flex justify-center mb-8">

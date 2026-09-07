@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [isBusiness, setIsBusiness] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -48,20 +50,25 @@ export default function LoginPage() {
         if (redirect) {
           localStorage.removeItem('redirect_after_login');
           window.location.href = redirect;
+          router.push(redirect);
         } else if (role === 'BUSINESS_ADMIN' || role === 'STAFF') {
           try {
             const bizRes = await api.get('/businesses/my');
             if (bizRes.data && bizRes.data.length > 0) {
               window.location.href = `/dashboard/${bizRes.data[0].id}`;
+              router.push(`/dashboard/${bizRes.data[0].id}`);
             } else {
               window.location.href = '/onboarding/business';
+              router.push('/onboarding/business');
             }
           } catch {
             window.location.href = '/';
+            router.push('/');
           }
         } else {
           // CUSTOMER with no specific redirect → Demo page
           window.location.href = '/demo';
+          router.push('/demo');
         }
       }
     } catch (err) {

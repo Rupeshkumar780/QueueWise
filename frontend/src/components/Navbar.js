@@ -33,7 +33,7 @@ export default function Navbar() {
     if (lastBiz) { setCustomerDashboardUrl(`/business/${lastBiz}`); }
     window.addEventListener("storage", loadUser);
     return () => window.removeEventListener("storage", loadUser);
-  }, []);
+  }, [pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");

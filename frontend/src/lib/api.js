@@ -23,7 +23,7 @@ export async function fetchAPI(endpoint, options = {}) {
   });
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== 'undefined') {
+    if (response.status === 401 && typeof window !== 'undefined' && !endpoint.includes('/auth/login')) {
       // If we get a 401 and we're on the client side, clear token and trigger storage event manually if needed, or just redirect
       localStorage.removeItem('token');
       window.dispatchEvent(new Event('storage')); // manually dispatch so listeners on same tab catch it

@@ -57,6 +57,8 @@ export default function DashboardLayout({ children, params }) {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
     router.push('/');
   };
 
@@ -177,7 +179,7 @@ export default function DashboardLayout({ children, params }) {
             {/* Sidebar */}
             <aside className={`
               print:hidden
-              absolute md:relative z-30 h-full w-64 bg-gradient-to-b from-slate-800 via-slate-600 to-slate-800 text-white flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out
+              absolute md:relative z-30 h-full w-64 bg-linear-to-b from-slate-800 via-slate-600 to-slate-800 text-white flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out
               ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
             `}>
               <div className="p-4 border-b border-slate-800">
