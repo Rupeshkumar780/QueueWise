@@ -55,7 +55,7 @@ export default function BusinessDetailsPage() {
   // Real-time WebSocket for live updates
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ["websocket"] });
-    socket.emit("join-business-room", businessId);
+    socket.emit("join-business-room", { businessId });
     socket.on("business_updated", () => {
       fetchData();
     });
@@ -63,7 +63,7 @@ export default function BusinessDetailsPage() {
       fetchData();
     });
     return () => {
-      socket.emit("leave-business-room", businessId);
+      socket.emit("leave-business-room", { businessId });
       socket.disconnect();
     };
   }, [businessId, fetchData]);

@@ -28,19 +28,17 @@ export default function Footer() {
           <div>
             <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Resources</h4>
             <ul className="space-y-3 text-sm text-gray-600">
-              <li><Link href="#" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">Help Center</Link></li>
-              <li><Link href="#" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">API Documentation</Link></li>
-              <li><Link href="#" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">System Status</Link></li>
+              <li><Link href="/help" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">Help Center</Link></li>
+              <li><Link href="/terms" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">Terms of Service</Link></li>
+              <li><Link href="/status" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">System Status</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Company</h4>
             <ul className="space-y-3 text-sm text-gray-600">
-              <li><Link href="#" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">About Us</Link></li>
-              <li><Link href="#" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">Contact</Link></li>
-              <li><Link href="#" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">Privacy Policy</Link></li>
-              {/* <li><Link href="#" className="hover:text-blue-600 transition">Terms of Service</Link></li> */}
+              <li><Link href="/about" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">About Us</Link></li>
+              <li><Link href="/privacy" className="relative inline-block hover:text-red-500 transition-colors after:absolute after:left-0 after:-bottom-1 after:h-0.5 after:w-full after:origin-left after:scale-x-0 after:bg-red-500 after:transition-transform after:duration-500 after:ease-in-out hover:after:scale-x-100">Privacy Policy</Link></li>
             </ul>
           </div>
         </div>

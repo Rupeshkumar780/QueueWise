@@ -55,6 +55,8 @@ export default function LiveQueuePage() {
     }
   };
 
+  const [socket, setSocket] = useState(null);
+
   useEffect(() => {
     fetchEntry();
 
@@ -62,22 +64,32 @@ export default function LiveQueuePage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
     const wsUrl = apiUrl.replace(/\/api\/v1$/, '');
     
-    const socket = io(wsUrl);
+    const newSocket = io(wsUrl);
+    setSocket(newSocket);
 
-    socket.on('connect', () => {
+    newSocket.on('connect', () => {
       console.log('Connected to WebSocket');
-      // we can explicitly join the room if we want, or the server broadcasts to all
     });
 
-    socket.on('queue_updated', () => {
+    newSocket.on('queue_updated', () => {
       console.log('Queue Updated! Refreshing entry...');
       fetchEntry();
     });
 
     return () => {
-      socket.disconnect();
+      newSocket.disconnect();
     };
-  }, [queueEntryId]);
+  }, [queueEntryId]); // fetchEntry is safe because it only depends on queueEntryId
+
+  useEffect(() => {
+    if (socket && entry?.queueId) {
+      socket.emit('join-queue-room', { queueId: entry.queueId });
+      
+      return () => {
+        socket.emit('leave-queue-room', { queueId: entry.queueId });
+      };
+    }
+  }, [socket, entry?.queueId]);
 
   const requestNotificationPermission = () => {
     if ("Notification" in window && Notification.permission !== "granted") {

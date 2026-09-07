@@ -356,18 +356,18 @@ export class BusinessesService {
       select: { joinedAt: true }
     });
 
-    // Group into 6 buckets (every 20 mins)
-    const buckets = [0, 0, 0, 0, 0, 0];
+    // Group into 7 buckets (every 20 mins to cover full 120 mins)
+    const buckets = [0, 0, 0, 0, 0, 0, 0];
     recentEntries.forEach(entry => {
       const diffMs = now.getTime() - new Date(entry.joinedAt).getTime();
-      const bucketIdx = 5 - Math.floor(diffMs / (20 * 60 * 1000));
-      if (bucketIdx >= 0 && bucketIdx <= 5) {
+      const bucketIdx = 6 - Math.floor(diffMs / (20 * 60 * 1000));
+      if (bucketIdx >= 0 && bucketIdx <= 6) {
         buckets[bucketIdx]++;
       }
     });
 
     const chartData = buckets.map((count, i) => {
-      const time = new Date(now.getTime() - (5 - i) * 20 * 60000);
+      const time = new Date(now.getTime() - (6 - i) * 20 * 60000);
       return {
         time: time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         waiting: count
@@ -489,26 +489,12 @@ export class BusinessesService {
       })
     ]);
 
-    // Apply Progressive Data Visibility Privacy Model
-    const maskWaitingEntry = (entry, index) => {
-      // If they are in the top 3, they are "NEXT UP" - reveal first name only
-      let maskedName = null;
-      if (index < 3 && entry.user?.name) {
-        maskedName = entry.user.name.split(' ')[0]; // First name only
-      }
-
-      return {
-        ...entry,
-        formData: undefined, // completely hide form data
-        user: maskedName ? { name: maskedName } : null,
-      };
-    };
-
-    nextUp = nextUp.map((entry, index) => maskWaitingEntry(entry, index));
+    // Removed masking so staff can see full details of waiting customers
+    nextUp = nextUp.map(entry => entry);
     
     queues = queues.map(queue => ({
       ...queue,
-      entries: queue.entries.map((entry, index) => maskWaitingEntry(entry, index))
+      entries: queue.entries
     }));
 
     // Generate dummy counter performance stats for UI

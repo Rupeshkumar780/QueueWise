@@ -195,10 +195,10 @@ export default function DashboardOverview({ params }) {
                   ? (
                       Object.entries(servingEntry.formData).find(([key]) =>
                         key.toLowerCase().includes('name')
-                      )?.[1] || Object.values(servingEntry.formData)[0]
+                      )?.[1] || null
                     )
                   : null;
-                const customerName = formName || servingEntry?.user?.name || 'Anonymous';
+                const customerName = formName || servingEntry?.user?.name || (servingEntry?.formData ? Object.values(servingEntry.formData)[0] : 'Anonymous');
 
                 return (
                   <div
@@ -279,6 +279,7 @@ export default function DashboardOverview({ params }) {
                         ));
                         const supportedQueueIds = supportedQueues.map(q => q.id);
                         const nextUpForCounter = (liveData.nextUp || []).filter(e => supportedQueueIds.includes(e.queueId)).slice(0, 3);
+                        const totalNextUp = (liveData.nextUp || []).filter(e => supportedQueueIds.includes(e.queueId)).length;
                         
                         if (nextUpForCounter.length === 0) {
                           return <div className="text-xs text-gray-400 italic">Queue is empty</div>;
@@ -298,6 +299,11 @@ export default function DashboardOverview({ params }) {
                                 </div>
                               );
                             })}
+                            {totalNextUp > 3 && (
+                              <div className="text-xs text-gray-400 font-medium pt-1 text-center border-t border-gray-100">
+                                ... and {totalNextUp - 3} more waiting
+                              </div>
+                            )}
                           </div>
                         );
                       })()}

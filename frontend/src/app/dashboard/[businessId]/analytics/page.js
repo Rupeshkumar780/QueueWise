@@ -56,10 +56,11 @@ export default function AnalyticsPage({ params }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Queue Crowd */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
           <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-6">Queue Crowd Today</h3>
-          <div className="h-48 flex items-end gap-2 px-2">
-            {queueCrowd.map((val, idx) => (
+          <div className="overflow-x-auto pb-6 -mb-6">
+            <div className="h-48 flex items-end gap-1 sm:gap-2 px-2 min-w-[400px]">
+              {queueCrowd.map((val, idx) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2">
                 <div className="w-full h-36 bg-blue-100 rounded-t-md relative group">
                   <div 
@@ -73,6 +74,7 @@ export default function AnalyticsPage({ params }) {
                 <div className="text-[10px] text-gray-500 font-medium -rotate-45 origin-top-left mt-2">{timeLabels[idx]}</div>
               </div>
             ))}
+            </div>
           </div>
         </div>
 

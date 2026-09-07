@@ -44,11 +44,14 @@ export default function StaffWorkspacePage({ params }) {
   }, [businessId]);
 
   const handleCallNext = async (queueId, counterId) => {
+    setActionInProgress('callNext');
     try {
       await api.post(`/queue-entries/queue/${queueId}/call-next`, { counterId });
-      fetchData();
+      await fetchData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error calling next');
+    } finally {
+      setActionInProgress(null);
     }
   };
 
@@ -123,12 +126,14 @@ export default function StaffWorkspacePage({ params }) {
   const relevantNextUp = (liveData.nextUp || []).filter(entry => supportedQueueIds.includes(entry.queueId));
 
   const getCustomerName = (formData, user) => {
+    let formName = null;
     if (formData) {
       const nameEntry = Object.entries(formData).find(([key]) => key.toLowerCase().includes('name'));
-      const formName = nameEntry?.[1] || Object.values(formData)[0];
-      if (formName) return formName;
+      if (nameEntry) {
+        formName = nameEntry[1];
+      }
     }
-    return user?.name || 'Anonymous';
+    return formName || user?.name || (formData ? Object.values(formData)[0] : 'Anonymous');
   };
 
   return (
@@ -246,11 +251,20 @@ export default function StaffWorkspacePage({ params }) {
               
               <button
                 onClick={() => handleCallNext(relevantNextUp[0].queueId, selectedCounterId)}
-                disabled={relevantNextUp.length === 0}
+                disabled={relevantNextUp.length === 0 || actionInProgress !== null}
                 className="w-full max-w-xs py-5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 text-white font-black text-xl shadow-lg transition-colors flex flex-col items-center justify-center gap-1"
               >
-                CALL NEXT PERSON
-                {relevantNextUp.length > 0 && <span className="text-sm font-semibold text-blue-200 block uppercase tracking-wider">#{relevantNextUp[0].tokenNumber} - {getCustomerName(relevantNextUp[0].formData, relevantNextUp[0].user)}</span>}
+                {actionInProgress === 'callNext' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    CALLING...
+                  </div>
+                ) : (
+                  <>
+                    CALL NEXT PERSON
+                    {relevantNextUp.length > 0 && <span className="text-sm font-semibold text-blue-200 block uppercase tracking-wider">#{relevantNextUp[0].tokenNumber} - {getCustomerName(relevantNextUp[0].formData, relevantNextUp[0].user)}</span>}
+                  </>
+                )}
               </button>
             </div>
           )}
