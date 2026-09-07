@@ -13,7 +13,7 @@ export class CountersController {
   }
 
   @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
-  @Roles('BUSINESS_ADMIN')
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':businessId')
   @Bind(Param('businessId'), Body())
   create(businessId, data) {

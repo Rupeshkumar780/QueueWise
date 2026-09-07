@@ -260,21 +260,24 @@ export default function ProfilePage({ params }) {
               name="geofenceRadius" 
               value={formData.geofenceRadius} 
               onChange={handleChange}
-              className="w-full sm:w-1/2 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              disabled={profile.role === 'STAFF'}
+              className="w-full sm:w-1/2 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
             />
           </div>
         </div>
         </div>
 
-        <div className="flex justify-end pb-12">
-          <button 
-            type="submit" 
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-3 px-8 rounded-lg shadow-md transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save All Changes'}
-          </button>
-        </div>
+        {profile.role !== 'STAFF' && (
+          <div className="flex justify-end pb-12">
+            <button 
+              type="submit" 
+              disabled={saving}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-3 px-8 rounded-lg shadow-md transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save All Changes'}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

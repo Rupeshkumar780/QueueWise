@@ -13,7 +13,7 @@ export default function CreateBusinessPage() {
     googleMapsUrl: '',
     latitude: '',
     longitude: '',
-    geofenceRadius: 100
+    geofenceRadius: 200
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -141,7 +141,7 @@ export default function CreateBusinessPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Google Maps URL</label>
+                <label className="block text-sm font-medium text-gray-700">Google Maps URL<span className="text-red-500">*</span></label>
                 <div className="mt-1 flex rounded-md shadow-sm">
                   <input
                     type="url"
@@ -165,7 +165,7 @@ export default function CreateBusinessPage() {
                 <h3 className="text-sm font-bold text-gray-900 mb-4">Geofencing Configuration</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Latitude <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700">Latitude</label>
                     <input
                       type="number"
                       step="any"
@@ -177,7 +177,7 @@ export default function CreateBusinessPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Longitude <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700">Longitude</label>
                     <input
                       type="number"
                       step="any"

@@ -12,7 +12,7 @@ export class ServicesController {
   }
 
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('BUSINESS_ADMIN')
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post(':businessId')
   @Bind(Param('businessId'), Body())
   create(businessId, data) {

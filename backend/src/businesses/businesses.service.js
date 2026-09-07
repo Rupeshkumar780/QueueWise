@@ -20,10 +20,21 @@ export class BusinessesService {
   }
 
   async update(id, data) {
-    return this.prisma.business.update({
+    const result = await this.prisma.business.update({
       where: { id },
       data,
     });
+    
+    // Invalidate the landing page cache
+    if (this.redisService?.getClient()) {
+      try {
+        await this.redisService.del(`business:${id}:landingData`);
+      } catch (e) {
+        console.error("Redis Cache Delete Error", e);
+      }
+    }
+    
+    return result;
   }
 
   async findMine(userId) {
@@ -383,7 +394,8 @@ export class BusinessesService {
         isOpen: business.isOpen,
         latitude: business.latitude,
         longitude: business.longitude,
-        geofenceRadius: business.geofenceRadius
+        geofenceRadius: business.geofenceRadius,
+        description: business.description
       },
       services: servicesWithWaitTimes,
       intelligence,

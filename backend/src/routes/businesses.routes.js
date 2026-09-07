@@ -40,7 +40,7 @@ export class BusinessesController {
   }
   
   @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
-  @Roles('BUSINESS_ADMIN', 'STAFF')
+  @Roles('BUSINESS_ADMIN')
   @Post(':id/update')
   @Bind(Param('id'), Body())
   update(id, data) {

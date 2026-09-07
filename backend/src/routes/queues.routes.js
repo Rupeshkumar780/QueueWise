@@ -13,7 +13,7 @@ export class QueuesController {
   }
 
   @UseGuards(AuthGuard('jwt'), RolesGuard, BusinessAccessGuard)
-  @Roles('BUSINESS_ADMIN')
+  @Roles('BUSINESS_ADMIN', 'STAFF')
   @Post()
   @Bind(Body())
   create(data) {
