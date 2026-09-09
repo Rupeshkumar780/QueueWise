@@ -2,53 +2,60 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Redis } from '@upstash/redis';
 import { EventEmitter } from 'events';
 
-// Helper for fast-fail timeout
-const withTimeout = (promise, ms, fallbackValue = null) => {
-  let timer;
-  const timeoutPromise = new Promise((resolve) => {
-    timer = setTimeout(() => {
-      resolve(fallbackValue);
-    }, ms);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-};
-
 @Injectable()
 export class RedisService {
   constructor() {
     this.logger = new Logger(RedisService.name);
-    this.eventEmitter = new EventEmitter();
     this.metrics = { hits: 0, misses: 0, errors: 0 };
-    
-    try {
-      this.client = Redis.fromEnv();
-      this.logger.log('Upstash Redis initialized from env');
-    } catch (error) {
-      this.logger.error('Failed to initialize Upstash Redis.', error);
+    this.connected = false;
+    this.emitter = new EventEmitter();
+
+    const restUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const restToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    if (restUrl && restToken) {
+      try {
+        this.client = new Redis({ url: restUrl, token: restToken });
+        this.connected = true;
+        this.logger.log(`Upstash Redis connected via REST API at ${restUrl}`);
+      } catch (error) {
+        this.logger.error('Failed to initialize Upstash Redis.', error);
+        this.client = null;
+        this.connected = false;
+      }
+    } else {
+      this.logger.warn('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN not set. Redis disabled.');
+      this.client = null;
+      this.connected = false;
     }
   }
 
   getClient() {
-    return this.client;
+    return this.connected ? this.client : null;
   }
 
   getMetrics() {
-    return this.metrics;
+    return {
+      ...this.metrics,
+      status: this.connected ? 'ready' : 'disabled',
+      available: this.connected,
+    };
   }
 
   async get(key) {
-    if (!this.client) {
+    if (!this.connected) {
       this.metrics.errors++;
       return null;
     }
     try {
-      const result = await withTimeout(this.client.get(key), 50, null);
-      if (result === null) {
+      const result = await this.client.get(key);
+      if (result === null || result === undefined) {
         this.metrics.misses++;
-      } else {
-        this.metrics.hits++;
+        return null;
       }
-      return result;
+      this.metrics.hits++;
+      // @upstash/redis auto-deserializes JSON, so return raw
+      return typeof result === 'string' ? result : JSON.stringify(result);
     } catch (e) {
       this.metrics.errors++;
       this.logger.warn(`Redis GET error for key ${key}: ${e.message}`);
@@ -57,12 +64,10 @@ export class RedisService {
   }
 
   async set(key, value, ttlSeconds) {
-    if (!this.client) return null;
+    if (!this.connected) return null;
     try {
-      const setPromise = ttlSeconds 
-        ? this.client.set(key, value, { ex: ttlSeconds }) 
-        : this.client.set(key, value);
-      return await withTimeout(setPromise, 100, null);
+      const opts = ttlSeconds ? { ex: ttlSeconds } : undefined;
+      return await this.client.set(key, value, opts);
     } catch (e) {
       this.logger.warn(`Redis SET error for key ${key}: ${e.message}`);
       return null;
@@ -70,9 +75,9 @@ export class RedisService {
   }
 
   async del(key) {
-    if (!this.client) return null;
+    if (!this.connected) return null;
     try {
-      return await withTimeout(this.client.del(key), 100, null);
+      return await this.client.del(key);
     } catch (e) {
       this.logger.warn(`Redis DEL error for key ${key}: ${e.message}`);
       return null;
@@ -80,25 +85,31 @@ export class RedisService {
   }
 
   async incr(key) {
-    if (!this.client) return null;
-    const result = await withTimeout(this.client.incr(key), 1000, null);
-    if (result === null) throw new Error("Redis INCR timed out. Falling back to DB.");
-    return result;
-  }
-
-  async publish(channel, message) {
-    // Single-node decoupling via internal EventEmitter
-    // This maintains the pub/sub architecture locally without requiring native Redis subscriptions.
+    if (!this.connected) return null;
     try {
-      const payload = typeof message === 'string' ? JSON.parse(message) : message;
-      this.eventEmitter.emit(channel, payload);
+      return await this.client.incr(key);
     } catch (e) {
-      this.logger.warn(`Local PUBLISH error: ${e.message}`);
+      this.logger.warn(`Redis INCR error for key ${key}: ${e.message}`);
+      return null;
     }
   }
 
+  async publish(channel, message) {
+    // Use local EventEmitter for pub/sub since Upstash REST doesn't support
+    // native Redis Pub/Sub subscriptions. For a single-instance app this is fine.
+    const payload = typeof message === 'string' ? message : JSON.stringify(message);
+    this.emitter.emit(channel, payload);
+  }
+
   subscribe(channel, callback) {
-    // Single-node decoupling via internal EventEmitter
-    this.eventEmitter.on(channel, callback);
+    // Local EventEmitter subscription
+    this.emitter.on(channel, (message) => {
+      try {
+        const parsed = JSON.parse(message);
+        callback(parsed);
+      } catch (e) {
+        callback(message);
+      }
+    });
   }
 }

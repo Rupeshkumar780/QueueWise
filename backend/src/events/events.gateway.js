@@ -4,7 +4,7 @@ import { RedisService } from '../redis/redis.service';
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.API_CORS_ORIGIN || process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
   },
 })
@@ -15,6 +15,28 @@ export class EventsGateway {
 
   constructor(redisService) {
     this.redisService = redisService;
+  }
+
+  broadcastQueueUpdate(queueId, businessId, eventType = 'queue.updated') {
+    const payload = { queueId, businessId, eventType, timestamp: new Date() };
+    const redisReady = !!this.redisService?.getClient();
+
+    if (redisReady) {
+      this.redisService.publish('queue-updates', payload);
+      if (businessId) {
+        this.redisService.del(`business:${businessId}:landing`);
+        this.redisService.del(`business:${businessId}:dashboard`);
+        this.redisService.del(`business:${businessId}:analytics`);
+      }
+      return;
+    }
+
+    if (this.server) {
+      this.server.to(`queue_${queueId}`).emit(eventType, payload);
+      if (businessId) {
+        this.server.to(`business_${businessId}`).emit(`business_${eventType}`, payload);
+      }
+    }
   }
 
   onModuleInit() {
@@ -75,12 +97,5 @@ export class EventsGateway {
     }
   }
 
-  broadcastQueueUpdate(queueId, businessId) {
-    const payload = { queueId, businessId, timestamp: new Date() };
-    this.server.to(`queue_${queueId}`).emit('queue_updated', payload);
-    if (businessId) {
-      this.server.to(`business_${businessId}`).emit('business_updated', payload);
-    }
-  }
 }
 

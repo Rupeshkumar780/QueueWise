@@ -25,10 +25,14 @@ export class BusinessesService {
       data,
     });
     
-    // Invalidate the static landing page cache
     if (this.redisService?.getClient()) {
       try {
-        await this.redisService.del(`business:${id}:landing_static`);
+        await Promise.all([
+          this.redisService.del(`business:${id}:landing`),
+          this.redisService.del(`business:${id}:dashboard`),
+          this.redisService.del(`business:${id}:analytics`),
+          this.redisService.del(`business:${id}:landing_static`),
+        ]);
       } catch (e) {
         console.error("Redis Cache Delete Error", e);
       }
@@ -133,6 +137,17 @@ export class BusinessesService {
   }
 
   async getAnalytics(businessId) {
+    const cacheKey = `business:${businessId}:analytics`;
+
+    if (this.redisService?.getClient()) {
+      try {
+        const cached = await this.redisService.get(cacheKey);
+        if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+      } catch (e) {
+        console.error("Redis Analytics Cache Read Error", e);
+      }
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -223,87 +238,68 @@ export class BusinessesService {
 
     const dailyActivity = Object.keys(dailyMap).map(day => ({ day, count: dailyMap[day] }));
 
-    return {
+    const analytics = {
       queueCrowd,
       timeLabels,
       dailyActivity,
       distribution,
       performance
     };
+
+    if (this.redisService?.getClient()) {
+      this.redisService.set(cacheKey, JSON.stringify(analytics), 30).catch(() => {});
+    }
+
+    return analytics;
   }
 
   async getCustomerLandingData(businessId) {
-    let staticData = null;
-    const staticCacheKey = `business:${businessId}:landing_static`;
+    const cacheKey = `business:${businessId}:landing`;
     
     if (this.redisService?.getClient()) {
       try {
-        const cached = await this.redisService.get(staticCacheKey);
-        if (cached) {
-          staticData = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        }
+        const cached = await this.redisService.get(cacheKey);
+        if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
       } catch (e) {
         console.error("Redis Cache Read Error", e);
       }
     }
 
-    if (!staticData) {
-      const business = await this.prisma.business.findUnique({
-        where: { id: businessId },
-        include: {
-          services: {
-            where: { active: true },
-            include: { queues: true }
-          }
-        }
-      });
-      if (!business) throw new NotFoundException('Business not found');
-
-      // 3. Chart Data (Real data: Tickets issued in the last 2 hours)
-      const now = new Date();
-      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-      const recentEntries = await this.prisma.queueEntry.findMany({
-        where: { queue: { businessId }, joinedAt: { gte: twoHoursAgo } },
-        select: { joinedAt: true }
-      });
-      const buckets = [0, 0, 0, 0, 0, 0, 0];
-      recentEntries.forEach(entry => {
-        const diffMs = now.getTime() - new Date(entry.joinedAt).getTime();
-        const bucketIdx = 6 - Math.floor(diffMs / (20 * 60 * 1000));
-        if (bucketIdx >= 0 && bucketIdx <= 6) buckets[bucketIdx]++;
-      });
-      const chartData = buckets.map((count, i) => {
-        const time = new Date(now.getTime() - (6 - i) * 20 * 60000);
-        return { time: time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), waiting: count };
-      });
-
-      staticData = {
-        business: {
-          id: business.id, name: business.name, address: business.address,
-          googleMapsUrl: business.googleMapsUrl, isOpen: business.isOpen,
-          latitude: business.latitude, longitude: business.longitude,
-          geofenceRadius: business.geofenceRadius, description: business.description
-        },
-        services: business.services,
-        chartData
-      };
-
-      if (this.redisService?.getClient()) {
-        try {
-          await this.redisService.set(staticCacheKey, JSON.stringify(staticData), 60); // 60s TTL for heavy data
-        } catch (e) {
-          console.error("Redis Cache Write Error", e);
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      include: {
+        services: {
+          where: { active: true },
+          include: { queues: true }
         }
       }
-    }
+    });
+    if (!business) throw new NotFoundException('Business not found');
 
-    // Live Data Layer
+    // 3. Chart Data
+    const now = new Date();
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    const recentEntries = await this.prisma.queueEntry.findMany({
+      where: { queue: { businessId }, joinedAt: { gte: twoHoursAgo } },
+      select: { joinedAt: true }
+    });
+    const buckets = [0, 0, 0, 0, 0, 0, 0];
+    recentEntries.forEach(entry => {
+      const diffMs = now.getTime() - new Date(entry.joinedAt).getTime();
+      const bucketIdx = 6 - Math.floor(diffMs / (20 * 60 * 1000));
+      if (bucketIdx >= 0 && bucketIdx <= 6) buckets[bucketIdx]++;
+    });
+    const chartData = buckets.map((count, i) => {
+      const time = new Date(now.getTime() - (6 - i) * 20 * 60000);
+      return { time: time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), waiting: count };
+    });
+
     const businessCounters = await this.prisma.counter.findMany({
       where: { businessId },
       select: { id: true, name: true, status: true, supportedServices: true }
     });
 
-    const servicesWithWaitTimes = staticData.services.map(service => {
+    const servicesWithWaitTimes = business.services.map(service => {
       const openQueue = service.queues.find(q => q.status === 'OPEN');
       const anyQueue = service.queues[0];
       const serviceCounters = businessCounters.filter(c => c.supportedServices && c.supportedServices.includes(service.id));
@@ -332,19 +328,22 @@ export class BusinessesService {
       };
     });
 
-    // We can also leverage queue snapshots here if needed, but DB is fast for this small query
-    const currentWaiting = await this.prisma.queueEntry.count({ where: { queue: { businessId }, status: 'WAITING' } });
+    // Wait time aggregation without full table load
     const activeCounters = businessCounters.filter(c => c.status !== 'OFFLINE').length;
     const totalCounters = businessCounters.length;
-
-    let totalEstWaitMins = 0;
+    
+    // Efficiently sum wait times using grouping if possible, but prisma groupBy on related fields is tricky
+    // So we fetch just the required fields for waiting entries
     const waitingEntries = await this.prisma.queueEntry.findMany({
       where: { queue: { businessId }, status: 'WAITING' },
-      include: { queue: { include: { service: true } } }
+      select: { queue: { select: { service: { select: { estimatedDuration: true } } } } }
     });
+    
+    let totalEstWaitMins = 0;
     for(let w of waitingEntries) {
         totalEstWaitMins += (w.queue.service?.estimatedDuration || 15);
     }
+    const currentWaiting = waitingEntries.length;
     const avgWaitTime = currentWaiting > 0 ? Math.ceil(totalEstWaitMins / Math.max(1, activeCounters)) : 0;
     
     let queueHealth = '🟢 Normal';
@@ -371,33 +370,47 @@ export class BusinessesService {
       take: 5
     });
 
-    return {
-      business: staticData.business,
+    const finalData = {
+      business: {
+        id: business.id, name: business.name, address: business.address,
+        googleMapsUrl: business.googleMapsUrl, isOpen: business.isOpen,
+        latitude: business.latitude, longitude: business.longitude,
+        geofenceRadius: business.geofenceRadius, description: business.description
+      },
       services: servicesWithWaitTimes,
       intelligence,
       currentActivity: { nowServing, nextUp },
-      chartData: staticData.chartData
+      chartData
     };
+
+    if (this.redisService?.getClient()) {
+      this.redisService.set(cacheKey, JSON.stringify(finalData), 300).catch(() => {});
+    }
+
+    return finalData;
   }
 
   async getDashboardStats(businessId) {
+    const cacheKey = `business:${businessId}:dashboard`;
+    if (this.redisService?.getClient()) {
+      try {
+        const cached = await this.redisService.get(cacheKey);
+        if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+      } catch (e) {
+        console.error("Redis Cache Read Error", e);
+      }
+    }
+
     // Quick overview stats
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const [totalServed, currentWaiting, activeCounters, totalCounters, openQueues] = await Promise.all([
       this.prisma.queueEntry.count({
-        where: {
-          queue: { businessId },
-          status: 'COMPLETED',
-          joinedAt: { gte: today }
-        }
+        where: { queue: { businessId }, status: 'COMPLETED', joinedAt: { gte: today } }
       }),
       this.prisma.queueEntry.count({
-        where: {
-          queue: { businessId },
-          status: 'WAITING'
-        }
+        where: { queue: { businessId }, status: 'WAITING' }
       }),
       this.prisma.counter.count({
         where: { businessId, status: { not: 'OFFLINE' } }
@@ -410,10 +423,9 @@ export class BusinessesService {
       })
     ]);
 
-    // Dummy avg wait time calculation for UI purposes
     const avgWaitTime = currentWaiting * 4; 
 
-    return { 
+    const stats = { 
       totalServedToday: totalServed, 
       currentWaiting, 
       activeCounters, 
@@ -421,6 +433,12 @@ export class BusinessesService {
       openQueues,
       avgWaitTime
     };
+
+    if (this.redisService?.getClient()) {
+      this.redisService.set(cacheKey, JSON.stringify(stats), 60).catch(() => {});
+    }
+
+    return stats;
   }
 
   async getLiveOperations(businessId) {

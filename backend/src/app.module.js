@@ -17,6 +17,9 @@ import { QueueEntriesModule } from './queue-entries/queue-entries.module';
 import { UtilsController } from './routes/utils.routes';
 import { MetricsController } from './routes/metrics.routes';
 
+import { MetricsInterceptor } from './interceptors/metrics.interceptor';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+
 @Module({
   imports: [
     RedisModule,
@@ -40,6 +43,10 @@ import { MetricsController } from './routes/metrics.routes';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MetricsInterceptor,
+    }
   ],
 })
 export class AppModule {

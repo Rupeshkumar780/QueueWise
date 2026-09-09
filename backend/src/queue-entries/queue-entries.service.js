@@ -21,7 +21,9 @@ export class QueueEntriesService {
       await this.redisService.publish('queue-updates', { queueId, businessId, eventType });
       
       // Step 13: Event-Driven Invalidation
-      await this.redisService.del(`business:${businessId}:landing_static`);
+      await this.redisService.del(`business:${businessId}:landing`);
+      await this.redisService.del(`business:${businessId}:dashboard`);
+      await this.redisService.del(`business:${businessId}:analytics`);
       
       this.updateQueueSnapshot(queueId, businessId);
     }
@@ -30,40 +32,24 @@ export class QueueEntriesService {
   async updateQueueSnapshot(queueId, businessId) {
     if (!this.redisService) return;
     
-    // Improvement 4: Maintain lightweight read-optimized state
-    const [queue, waitingCount, activeCounters] = await Promise.all([
-      this.prisma.queue.findUnique({ where: { id: queueId }, include: { service: true } }),
-      this.prisma.queueEntry.count({ where: { queueId, status: 'WAITING' } }),
-      this.prisma.counter.count({ where: { businessId, status: { not: 'OFFLINE' } } })
-    ]);
-
-    if (queue) {
-      const estimatedWait = waitingCount * (queue.service?.estimatedDuration || 15);
-      const snapshot = {
-        currentToken: queue.currentToken,
-        waiting: waitingCount,
-        activeCounters,
-        estimatedWait,
-        status: queue.status,
-        updatedAt: new Date().toISOString()
-      };
-      await this.redisService.set(`queue:${queueId}:snapshot`, JSON.stringify(snapshot));
-    }
+    // Improvement: Instead of performing multiple DB queries to recalculate after every mutation,
+    // we simply invalidate the cache. The next read operation will lazily rebuild it.
+    await this.redisService.del(`queue:${queueId}:live`);
   }
 
   async joinQueue(queueId, userId, locationData) {
-    // Duplicate prevention: If userId is provided, check if they are already waiting
-    if (userId) {
-      const existing = await this.prisma.queueEntry.findFirst({
-        where: { queueId, userId, status: { in: ['WAITING', 'CALLED'] } }
-      });
-      if (existing) {
-        throw new BadRequestException('You are already in this queue.');
+    // Transactional token generation & concurrency protection
+    const entry = await this.prisma.$transaction(async (tx) => {
+      // Duplicate prevention (inside transaction to prevent race conditions)
+      if (userId) {
+        const existing = await tx.queueEntry.findFirst({
+          where: { queueId, userId, status: { in: ['WAITING', 'CALLED'] } }
+        });
+        if (existing) {
+          throw new BadRequestException('You are already in this queue.');
+        }
       }
-    }
 
-    // Transactional token generation
-    return this.prisma.$transaction(async (tx) => {
       const queue = await tx.queue.findUnique({ 
         where: { id: queueId },
         include: { business: true, service: true }
@@ -125,29 +111,41 @@ export class QueueEntriesService {
         }
       });
       
-      this.publishQueueUpdate(queueId, queue.businessId, 'queue.customer_joined');
       return entry;
     });
+
+    this.publishQueueUpdate(queueId, undefined, 'queue.customer_joined').catch(() => {});
+    return entry;
   }
 
   async cancelEntry(id, userId) {
-    const entry = await this.prisma.queueEntry.findUnique({ where: { id } });
-    if (!entry) throw new NotFoundException('Entry not found');
-    
-    // If not called by admin, check ownership
-    if (userId !== 'ADMIN' && entry.userId !== userId) {
-      throw new BadRequestException('Unauthorized');
-    }
-    
-    if (entry.status !== 'WAITING') throw new BadRequestException('Can only cancel waiting entries');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Find entry inside transaction with a write lock to prevent race conditions during cancellation
+      const entries = await tx.$queryRaw`
+        SELECT * FROM "QueueEntry" 
+        WHERE id = ${id} FOR UPDATE
+      `;
+      const entry = entries && entries.length > 0 ? entries[0] : null;
 
-    const updated = await this.prisma.queueEntry.update({
-      where: { id },
-      data: { status: 'CANCELLED' },
-      include: { queue: true }
+      if (!entry) throw new NotFoundException('Entry not found');
+      
+      // If not called by admin, check ownership
+      if (userId !== 'ADMIN' && entry.userId !== userId) {
+        throw new BadRequestException('Unauthorized');
+      }
+      
+      if (entry.status !== 'WAITING') throw new BadRequestException('Can only cancel waiting entries');
+
+      const updated = await tx.queueEntry.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+        include: { queue: true }
+      });
+      
+      return updated;
     });
-    
-    this.publishQueueUpdate(updated.queueId, updated.queue.businessId, 'queue.customer_cancelled');
+
+    this.publishQueueUpdate(updated.queueId, updated.queue.businessId, 'queue.customer_cancelled').catch(() => {});
     return updated;
   }
 
@@ -256,8 +254,8 @@ export class QueueEntriesService {
       }
     });
 
-    // Enhance with "people ahead" and "ETA" for WAITING entries
-    for (const entry of activeEntries) {
+    // Enhance with "people ahead" and "ETA" for WAITING entries concurrently
+    await Promise.all(activeEntries.map(async (entry) => {
       if (entry.status === 'WAITING') {
         const peopleAhead = await this.prisma.queueEntry.count({
           where: {
@@ -269,21 +267,25 @@ export class QueueEntriesService {
         entry.peopleAhead = peopleAhead;
         entry.estimatedWaitMins = (peopleAhead + 1) * (entry.queue.service?.estimatedDuration || 15);
       }
-    }
+    }));
 
     return activeEntries;
   }
 
   async callNext(queueId, counterId) {
-    return this.prisma.$transaction(async (tx) => {
-      // Find the next waiting entry
-      const nextEntry = await tx.queueEntry.findFirst({
-        where: { queueId, status: 'WAITING' },
-        orderBy: [
-          { priority: 'desc' },
-          { joinedAt: 'asc' }
-        ]
-      });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Find the next waiting entry using raw SQL with SKIP LOCKED to prevent race conditions
+      const nextEntries = await tx.$queryRaw`
+        SELECT id FROM "QueueEntry"
+        WHERE "queueId" = ${queueId} AND "status" = 'WAITING'
+        ORDER BY "priority" DESC, "joinedAt" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      `;
+
+      if (!nextEntries || nextEntries.length === 0) throw new NotFoundException('No waiting entries in this queue');
+      
+      const nextEntry = nextEntries[0];
 
       if (!nextEntry) throw new NotFoundException('No waiting entries in this queue');
 
@@ -305,13 +307,15 @@ export class QueueEntriesService {
         });
       }
 
-      this.publishQueueUpdate(queueId, undefined, 'queue.customer_called');
       return updated;
     });
+
+    this.publishQueueUpdate(queueId, undefined, 'queue.customer_called').catch(() => {});
+    return updated;
   }
 
   async completeService(id, counterId) {
-    return this.prisma.$transaction(async (tx) => {
+    const entry = await this.prisma.$transaction(async (tx) => {
       const entry = await tx.queueEntry.update({
         where: { id },
         data: { status: 'COMPLETED', completedAt: new Date() }
@@ -323,13 +327,15 @@ export class QueueEntriesService {
           data: { status: 'AVAILABLE', currentQueueEntryId: null }
         });
       }
-      this.publishQueueUpdate(entry.queueId, undefined, 'queue.customer_completed');
       return entry;
     });
+
+    this.publishQueueUpdate(entry.queueId, undefined, 'queue.customer_completed').catch(() => {});
+    return entry;
   }
 
   async markNoShow(id, counterId) {
-    return this.prisma.$transaction(async (tx) => {
+    const entry = await this.prisma.$transaction(async (tx) => {
       const entry = await tx.queueEntry.update({
         where: { id },
         data: { status: 'NO_SHOW' }
@@ -341,9 +347,11 @@ export class QueueEntriesService {
           data: { status: 'AVAILABLE', currentQueueEntryId: null }
         });
       }
-      this.publishQueueUpdate(entry.queueId, undefined, 'queue.customer_noshow');
       return entry;
     });
+
+    this.publishQueueUpdate(entry.queueId, undefined, 'queue.customer_noshow').catch(() => {});
+    return entry;
   }
 
   async getBusinessEntries(businessId) {
@@ -380,10 +388,18 @@ export class QueueEntriesService {
       }
     });
     
-    // manual assignedCounter fetch
-    for (const entry of entries) {
-      if (entry.assignedCounterId) {
-        entry.assignedCounter = await this.prisma.counter.findUnique({ where: { id: entry.assignedCounterId }, select: { name: true } });
+    // manual assignedCounter fetch batched
+    const counterIds = [...new Set(entries.map(e => e.assignedCounterId).filter(Boolean))];
+    if (counterIds.length > 0) {
+      const counters = await this.prisma.counter.findMany({
+        where: { id: { in: counterIds } },
+        select: { id: true, name: true }
+      });
+      const counterMap = Object.fromEntries(counters.map(c => [c.id, c]));
+      for (const entry of entries) {
+        if (entry.assignedCounterId) {
+          entry.assignedCounter = counterMap[entry.assignedCounterId];
+        }
       }
     }
     return entries;

@@ -25,7 +25,7 @@ export class QueueEntriesController {
       const rateLimitKey = `ratelimit:user:${userId}:join`;
       const current = await this.redisService.incr(rateLimitKey);
       if (current === 1) {
-        await this.redisService.getClient().expire(rateLimitKey, 60);
+        await this.redisService.set(rateLimitKey, '1', 60);
       }
       if (current > 5) {
         throw new HttpException('Too Many Requests. Please wait before joining again.', HttpStatus.TOO_MANY_REQUESTS);
