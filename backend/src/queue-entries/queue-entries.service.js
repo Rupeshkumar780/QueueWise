@@ -67,26 +67,29 @@ export class QueueEntriesService {
         }
       }
 
-      // Geofencing Check
-      if ((queue.locationRequired || queue.service?.requiresLocation) && queue.business.latitude && queue.business.longitude) {
-        if (!locationData || !locationData.lat || !locationData.lng) {
-          throw new BadRequestException('Location data is required to join this queue.');
-        }
+      // Every queue join is location-verified. The server remains authoritative
+      // so a customer cannot bypass geofencing by calling the API directly.
+      const hasBusinessCoordinates = Number.isFinite(queue.business.latitude)
+        && Number.isFinite(queue.business.longitude);
+      if (!hasBusinessCoordinates) {
+        throw new BadRequestException('This business has not configured a valid location.');
+      }
 
-        const distanceKm = calculateDistanceKm(
-          locationData.lat, 
-          locationData.lng, 
-          queue.business.latitude, 
-          queue.business.longitude
-        );
+      if (!locationData || !Number.isFinite(locationData.lat) || !Number.isFinite(locationData.lng)) {
+        throw new BadRequestException('Location permission is required to join this queue.');
+      }
 
-        const distanceMeters = distanceKm * 1000;
-        const allowedRadius = queue.business.geofenceRadius || 100;
+      const distanceKm = calculateDistanceKm(
+        locationData.lat,
+        locationData.lng,
+        queue.business.latitude,
+        queue.business.longitude
+      );
+      const allowedRadius = queue.locationRadius || queue.business.geofenceRadius;
+      const distanceMeters = distanceKm * 1000;
 
-        // Enforce branch-specific radius limit
-        if (distanceKm === null || distanceMeters > allowedRadius) {
-          throw new BadRequestException(`Please move closer to the location to join the queue. Must be within ${allowedRadius}m.`);
-        }
+      if (!Number.isFinite(distanceKm) || !Number.isFinite(allowedRadius) || allowedRadius <= 0 || distanceMeters > allowedRadius) {
+        throw new BadRequestException(`Please move closer to the location to join the queue. Must be within ${allowedRadius || 100}m.`);
       }
       
       // Authoritative database increment to guarantee zero duplicates

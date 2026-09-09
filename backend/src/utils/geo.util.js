@@ -7,7 +7,7 @@
  * @returns {number} Distance in kilometers
  */
 export function calculateDistanceKm(lat1, lon1, lat2, lon2) {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null;
 
   const R = 6371; // Radius of the earth in km
   const dLat = deg2rad(lat2 - lat1);

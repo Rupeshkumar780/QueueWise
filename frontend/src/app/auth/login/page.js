@@ -66,9 +66,14 @@ export default function LoginPage() {
             router.push('/');
           }
         } else {
-          // CUSTOMER with no specific redirect → Demo page
-          window.location.href = '/demo';
-          router.push('/demo');
+          // Customers return to their business page, or use the demo page when no business was saved.
+          const customerRedirect = localStorage.getItem('customer_dashboard_url')
+            || (localStorage.getItem('lastVisitedBusinessId')
+              ? `/business/${localStorage.getItem('lastVisitedBusinessId')}`
+              : null)
+            || '/demo';
+          window.location.href = customerRedirect;
+          router.push(customerRedirect);
         }
       }
     } catch (err) {

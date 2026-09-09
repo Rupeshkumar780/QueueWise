@@ -46,15 +46,21 @@ export default function SignupPage() {
           window.location.href = '/onboarding/business';
           router.push('/onboarding/business');
         } else {
-          // If customer, redirect back to where they came from (or dashboard)
-          const redirect = typeof window !== 'undefined' ? localStorage.getItem('redirect_after_login') : null;
+          // Customers return to their business page, or use the demo page when no business was saved.
+          const redirect = typeof window !== 'undefined'
+            ? localStorage.getItem('redirect_after_login')
+              || localStorage.getItem('customer_dashboard_url')
+              || (localStorage.getItem('lastVisitedBusinessId')
+                ? `/business/${localStorage.getItem('lastVisitedBusinessId')}`
+                : null)
+            : null;
           if (redirect) {
             localStorage.removeItem('redirect_after_login');
             window.location.href = redirect;
             router.push(redirect);
           } else {
-            window.location.href = '/dashboard';
-            router.push('/dashboard');
+            window.location.href = '/demo';
+            router.push('/demo');
           }
         }
       } else {

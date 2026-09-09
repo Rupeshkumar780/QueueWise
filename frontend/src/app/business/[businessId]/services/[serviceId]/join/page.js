@@ -89,7 +89,7 @@ export default function JoinQueuePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (service?.requiresLocation && locationStatus !== "success") {
+    if (locationStatus !== "success") {
       toast.error("Please share your location to join.");
       return;
     }
@@ -175,7 +175,7 @@ export default function JoinQueuePage() {
           )}
 
           {/* Location Verification */}
-          {service.requiresLocation && locationStatus !== "success" && (
+          {locationStatus !== "success" && (
             <div className="mb-6 p-5 border-2 border-dashed border-gray-200 rounded-xl text-center">
               <div className="text-3xl mb-2">📍</div>
               <h3 className="font-bold text-gray-900 mb-1">Location Verification Required</h3>

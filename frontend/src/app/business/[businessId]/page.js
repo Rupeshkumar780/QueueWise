@@ -17,7 +17,9 @@ import Footer from "../../../components/Footer";
 import io from "socket.io-client";
 
 const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_SOCKET_URL ||
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1$/, "") ||
+  "http://localhost:3001";
 
 export default function BusinessDetailsPage() {
   const { businessId } = useParams();
@@ -48,7 +50,10 @@ export default function BusinessDetailsPage() {
 
   // Initial load
   useEffect(() => {
-    if (businessId) { localStorage.setItem("lastVisitedBusinessId", businessId); }
+    if (businessId) {
+      localStorage.setItem("lastVisitedBusinessId", businessId);
+      localStorage.setItem("customer_dashboard_url", `/business/${businessId}`);
+    }
     fetchData();
   }, [fetchData, businessId]);
 
