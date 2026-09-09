@@ -298,7 +298,7 @@ export default function BusinessDetailsPage() {
                           {service.queueStatus === "BUSY" && (
                             <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
                               <span className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
-                              Counters Busy
+                              Serving Customers
                             </span>
                           )}
                           {service.queueStatus === "PAUSED" && (
@@ -324,19 +324,16 @@ export default function BusinessDetailsPage() {
                       <div className="bg-gray-50 border-t sm:border-t-0 sm:border-l border-gray-100 flex items-center justify-center p-4 sm:w-44">
                         <button
                           onClick={() => router.push(`/business/${businessId}/services/${service.id}/join`)}
-                          disabled={service.queueStatus !== "OPEN"}
+                          disabled={service.queueStatus === "OFFLINE" || service.queueStatus === "CLOSED" || service.queueStatus === "PAUSED"}
                           className={`w-full px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                            service.queueStatus === "OPEN"
+                            service.queueStatus === "OPEN" || service.queueStatus === "BUSY"
                               ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md"
-                              : service.queueStatus === "BUSY"
-                              ? "bg-orange-100 text-orange-500 cursor-not-allowed"
                               : service.queueStatus === "PAUSED"
                               ? "bg-yellow-100 text-yellow-600 cursor-not-allowed"
                               : "bg-gray-200 text-gray-400 cursor-not-allowed"
                           }`}
                         >
-                          {service.queueStatus === "OPEN" ? "Join Queue →"
-                            : service.queueStatus === "BUSY" ? "Counters Busy"
+                          {service.queueStatus === "OPEN" || service.queueStatus === "BUSY" ? "Join Queue →"
                             : service.queueStatus === "PAUSED" ? "Paused"
                             : "Unavailable"}
                         </button>

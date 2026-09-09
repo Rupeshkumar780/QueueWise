@@ -45,7 +45,12 @@ export default function HelpPage() {
           <div className="mt-12 pt-8 border-t border-gray-200 text-center">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Still need help?</h3>
             <p className="text-gray-600 mb-4">Our support team is always ready to assist you.</p>
-            <a href="mailto:queuewise.support@gmail.com" className="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors">
+            <a
+              href="https://mail.google.com/mail/?view=cm&fs=1&to=queuewise.support@gmail.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors"
+            >
               Contact Support
             </a>
           </div>

@@ -316,8 +316,8 @@ export class BusinessesService {
       let displayStatus = openQueue ? openQueue.status : (anyQueue ? anyQueue.status : 'CLOSED');
       if (counterSummary && counterSummary.activeCounters === 0 && counterSummary.total > 0) {
         displayStatus = 'OFFLINE';
-      } else if (counterSummary && counterSummary.busyCounters === counterSummary.activeCounters && counterSummary.busyCounters > 0) {
-        displayStatus = 'BUSY';
+      } else if (counterSummary && counterSummary.activeCounters > 0 && displayStatus === 'PAUSED') {
+        displayStatus = 'OPEN';
       }
 
       return {

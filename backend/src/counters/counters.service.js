@@ -44,17 +44,8 @@ export class CountersService {
         }
       });
 
-      let queueStatus = 'CLOSED';
-      const hasAvailable = allCounters.some(c => c.status === 'AVAILABLE');
-      const hasBusy = allCounters.some(c => c.status === 'BUSY');
-
-      if (hasAvailable) {
-        queueStatus = 'OPEN';
-      } else if (hasBusy) {
-        queueStatus = 'PAUSED';
-      } else {
-        queueStatus = 'CLOSED';
-      }
+      const hasOperationalCounter = allCounters.some(c => c.status !== 'OFFLINE');
+      const queueStatus = hasOperationalCounter ? 'OPEN' : 'CLOSED';
 
       // Update the Queue Status
       await this.prisma.queue.updateMany({
@@ -107,9 +98,7 @@ export class CountersService {
           where: { businessId, supportedServices: { has: serviceId } }
         });
         
-        let queueStatus = 'CLOSED';
-        if (allRemaining.some(c => c.status === 'AVAILABLE')) queueStatus = 'OPEN';
-        else if (allRemaining.some(c => c.status === 'BUSY')) queueStatus = 'PAUSED';
+        const queueStatus = allRemaining.some(c => c.status !== 'OFFLINE') ? 'OPEN' : 'CLOSED';
         
         await this.prisma.queue.updateMany({
           where: { serviceId },

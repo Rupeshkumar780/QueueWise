@@ -55,7 +55,16 @@ export class QueueEntriesService {
         include: { business: true, service: true }
       });
       if (!queue) throw new NotFoundException('Queue not found');
-      if (queue.status !== 'OPEN') throw new BadRequestException('Queue is not open');
+      if (queue.status !== 'OPEN') {
+        const operationalCounters = await tx.counter.count({
+          where: {
+            businessId: queue.businessId,
+            supportedServices: { has: queue.serviceId },
+            status: { not: 'OFFLINE' }
+          }
+        });
+        if (operationalCounters === 0) throw new BadRequestException('Queue is not open');
+      }
 
       // Check max capacity
       if (queue.maxCapacity) {
