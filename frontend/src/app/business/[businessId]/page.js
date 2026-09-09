@@ -173,7 +173,7 @@ export default function BusinessDetailsPage() {
       </nav>
 
       {/* ─── Business Header Banner ─── */}
-      <div className="relative bg-linear-to-br from-gray-800 via-gray-600 to-gray-800 text-white px-4 py-8 sm:px-6 lg:px-8">
+      <div className="relative bg-linear-to-br from-gray-800 via-gray-600 to-gray-800 text-white px-4 pb-12 pt-6 sm:px-6 sm:pb-12 lg:px-8 lg:py-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
             <div className="flex-1 order-last sm:order-first">
@@ -183,7 +183,7 @@ export default function BusinessDetailsPage() {
               </div>
               <p className="text-gray-300 text-sm mt-1">{business.address}</p>
               
-              <div className="flex flex-wrap items-center gap-3 mt-4">
+              <div className="flex flex-wrap items-center gap-3 pr-24 mt-4 lg:pr-0">
                 {business.isOpen ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30">
                     <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
@@ -207,13 +207,12 @@ export default function BusinessDetailsPage() {
                 )}
               </div>
             </div>
-
-            <div className="hidden sm:block text-right text-xs text-white/50 absolute top-4 right-4">
-              Powered by{" "}
-              <span className="text-red-400 font-bold">Queue</span>
-              <span className="text-white/80 font-bold">Wise</span>
-            </div>
           </div>
+        </div>
+        <div className="absolute bottom-4 right-4 text-right text-[10px] text-white/55 sm:right-6 lg:bottom-auto lg:right-8 lg:top-1/2 lg:-translate-y-1/2">
+          Powered by{" "}
+          <span className="font-bold text-red-400">Queue</span>
+          <span className="font-bold text-white/80">Wise</span>
         </div>
       </div>
 

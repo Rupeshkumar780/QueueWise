@@ -1,22 +1,37 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Dependencies, Bind } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Dependencies, Bind, HttpException, HttpStatus } from '@nestjs/common';
 import { QueueEntriesService } from '../queue-entries/queue-entries.service';
+import { RedisService } from '../redis/redis.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { BusinessAccessGuard } from '../auth/business-access.guard';
 
 @Controller('v1/queue-entries')
-@Dependencies(QueueEntriesService)
+@Dependencies(QueueEntriesService, RedisService)
 export class QueueEntriesController {
-  constructor(queueEntriesService) {
+  constructor(queueEntriesService, redisService) {
     this.queueEntriesService = queueEntriesService;
+    this.redisService = redisService;
   }
 
   @Post(':queueId/join')
   @UseGuards(AuthGuard('jwt'))
   @Bind(Param('queueId'), Body(), Request())
-  joinQueue(queueId, body, req) {
+  async joinQueue(queueId, body, req) {
     const userId = req.user?.id || null;
+    
+    // Improvement 3: Rate Limiting
+    if (this.redisService && userId) {
+      const rateLimitKey = `ratelimit:user:${userId}:join`;
+      const current = await this.redisService.incr(rateLimitKey);
+      if (current === 1) {
+        await this.redisService.getClient().expire(rateLimitKey, 60);
+      }
+      if (current > 5) {
+        throw new HttpException('Too Many Requests. Please wait before joining again.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
+    
     return this.queueEntriesService.joinQueue(queueId, userId, body.locationData);
   }
 

@@ -25,10 +25,10 @@ export class BusinessesService {
       data,
     });
     
-    // Invalidate the landing page cache
+    // Invalidate the static landing page cache
     if (this.redisService?.getClient()) {
       try {
-        await this.redisService.del(`business:${id}:landingData`);
+        await this.redisService.del(`business:${id}:landing_static`);
       } catch (e) {
         console.error("Redis Cache Delete Error", e);
       }
@@ -233,50 +233,81 @@ export class BusinessesService {
   }
 
   async getCustomerLandingData(businessId) {
-    // REDIS CACHE: Check if landing data is cached (Layer 2)
-    const cacheKey = `business:${businessId}:landingData`;
+    let staticData = null;
+    const staticCacheKey = `business:${businessId}:landing_static`;
+    
     if (this.redisService?.getClient()) {
       try {
-        const cached = await this.redisService.get(cacheKey);
+        const cached = await this.redisService.get(staticCacheKey);
         if (cached) {
-          return JSON.parse(cached);
+          staticData = typeof cached === 'string' ? JSON.parse(cached) : cached;
         }
       } catch (e) {
         console.error("Redis Cache Read Error", e);
       }
     }
-    // Fetch business + services + queues (counters belong to business, not queue)
-    const [business, businessCounters] = await Promise.all([
-      this.prisma.business.findUnique({
+
+    if (!staticData) {
+      const business = await this.prisma.business.findUnique({
         where: { id: businessId },
         include: {
           services: {
             where: { active: true },
-            include: {
-              queues: true  // All queues for this service
-            }
+            include: { queues: true }
           }
         }
-      }),
-      this.prisma.counter.findMany({
-        where: { businessId },
-        select: { id: true, name: true, status: true, supportedServices: true }
-      })
-    ]);
+      });
+      if (!business) throw new NotFoundException('Business not found');
 
-    if (!business) throw new NotFoundException('Business not found');
+      // 3. Chart Data (Real data: Tickets issued in the last 2 hours)
+      const now = new Date();
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const recentEntries = await this.prisma.queueEntry.findMany({
+        where: { queue: { businessId }, joinedAt: { gte: twoHoursAgo } },
+        select: { joinedAt: true }
+      });
+      const buckets = [0, 0, 0, 0, 0, 0, 0];
+      recentEntries.forEach(entry => {
+        const diffMs = now.getTime() - new Date(entry.joinedAt).getTime();
+        const bucketIdx = 6 - Math.floor(diffMs / (20 * 60 * 1000));
+        if (bucketIdx >= 0 && bucketIdx <= 6) buckets[bucketIdx]++;
+      });
+      const chartData = buckets.map((count, i) => {
+        const time = new Date(now.getTime() - (6 - i) * 20 * 60000);
+        return { time: time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), waiting: count };
+      });
 
-    const servicesWithWaitTimes = business.services.map(service => {
-      // Find the OPEN queue (if any)
+      staticData = {
+        business: {
+          id: business.id, name: business.name, address: business.address,
+          googleMapsUrl: business.googleMapsUrl, isOpen: business.isOpen,
+          latitude: business.latitude, longitude: business.longitude,
+          geofenceRadius: business.geofenceRadius, description: business.description
+        },
+        services: business.services,
+        chartData
+      };
+
+      if (this.redisService?.getClient()) {
+        try {
+          await this.redisService.set(staticCacheKey, JSON.stringify(staticData), 60); // 60s TTL for heavy data
+        } catch (e) {
+          console.error("Redis Cache Write Error", e);
+        }
+      }
+    }
+
+    // Live Data Layer
+    const businessCounters = await this.prisma.counter.findMany({
+      where: { businessId },
+      select: { id: true, name: true, status: true, supportedServices: true }
+    });
+
+    const servicesWithWaitTimes = staticData.services.map(service => {
       const openQueue = service.queues.find(q => q.status === 'OPEN');
-      const anyQueue = service.queues[0]; // fallback
+      const anyQueue = service.queues[0];
+      const serviceCounters = businessCounters.filter(c => c.supportedServices && c.supportedServices.includes(service.id));
 
-      // Find counters that support this service
-      const serviceCounters = businessCounters.filter(c => 
-        c.supportedServices && c.supportedServices.includes(service.id)
-      );
-
-      // Aggregate counter statuses
       let counterSummary = null;
       if (serviceCounters.length > 0) {
         const total = serviceCounters.length;
@@ -286,40 +317,26 @@ export class BusinessesService {
         counterSummary = { total, activeCounters, busyCounters, offlineCounters };
       }
 
-      // Compute a meaningful display status
       let displayStatus = openQueue ? openQueue.status : (anyQueue ? anyQueue.status : 'CLOSED');
       if (counterSummary && counterSummary.activeCounters === 0 && counterSummary.total > 0) {
-        displayStatus = 'OFFLINE'; // All counters offline
+        displayStatus = 'OFFLINE';
       } else if (counterSummary && counterSummary.busyCounters === counterSummary.activeCounters && counterSummary.busyCounters > 0) {
-        displayStatus = 'BUSY'; // All active counters are busy
+        displayStatus = 'BUSY';
       }
 
       return {
-        id: service.id,
-        name: service.name,
-        description: service.description,
-        requiresLocation: service.requiresLocation,
-        estimatedDuration: service.estimatedDuration,
-        queueStatus: displayStatus,
-        queueId: openQueue ? openQueue.id : (anyQueue ? anyQueue.id : null),
-        counterSummary,
-        queues: service.queues.map(q => ({ id: q.id, status: q.status })),
+        id: service.id, name: service.name, description: service.description,
+        requiresLocation: service.requiresLocation, estimatedDuration: service.estimatedDuration,
+        queueStatus: displayStatus, queueId: openQueue ? openQueue.id : (anyQueue ? anyQueue.id : null),
+        counterSummary, queues: service.queues.map(q => ({ id: q.id, status: q.status })),
       };
     });
 
-    // 1. Live Queue Intelligence
-    const currentWaiting = await this.prisma.queueEntry.count({
-      where: { queue: { businessId }, status: 'WAITING' }
-    });
-    
-    const activeCounters = await this.prisma.counter.count({
-      where: { businessId, status: { not: 'OFFLINE' } }
-    });
-    const totalCounters = await this.prisma.counter.count({
-      where: { businessId }
-    });
+    // We can also leverage queue snapshots here if needed, but DB is fast for this small query
+    const currentWaiting = await this.prisma.queueEntry.count({ where: { queue: { businessId }, status: 'WAITING' } });
+    const activeCounters = businessCounters.filter(c => c.status !== 'OFFLINE').length;
+    const totalCounters = businessCounters.length;
 
-    // Calculate real avg wait time
     let totalEstWaitMins = 0;
     const waitingEntries = await this.prisma.queueEntry.findMany({
       where: { queue: { businessId }, status: 'WAITING' },
@@ -341,7 +358,6 @@ export class BusinessesService {
       queueHealth,
     };
 
-    // 2. Current Service Activity
     const nowServing = await this.prisma.queueEntry.findMany({
       where: { queue: { businessId }, status: { in: ['CALLED', 'SERVING'] } },
       select: { tokenNumber: true, queue: { select: { tokenPrefix: true, name: true } }, assignedCounterId: true },
@@ -355,67 +371,13 @@ export class BusinessesService {
       take: 5
     });
 
-    // 3. Chart Data (Real data: Tickets issued in the last 2 hours)
-    const now = new Date();
-    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-    
-    const recentEntries = await this.prisma.queueEntry.findMany({
-      where: { 
-        queue: { businessId },
-        joinedAt: { gte: twoHoursAgo }
-      },
-      select: { joinedAt: true }
-    });
-
-    // Group into 7 buckets (every 20 mins to cover full 120 mins)
-    const buckets = [0, 0, 0, 0, 0, 0, 0];
-    recentEntries.forEach(entry => {
-      const diffMs = now.getTime() - new Date(entry.joinedAt).getTime();
-      const bucketIdx = 6 - Math.floor(diffMs / (20 * 60 * 1000));
-      if (bucketIdx >= 0 && bucketIdx <= 6) {
-        buckets[bucketIdx]++;
-      }
-    });
-
-    const chartData = buckets.map((count, i) => {
-      const time = new Date(now.getTime() - (6 - i) * 20 * 60000);
-      return {
-        time: time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        waiting: count
-      };
-    });
-
-    const responseData = {
-      business: {
-        id: business.id,
-        name: business.name,
-        address: business.address,
-        googleMapsUrl: business.googleMapsUrl,
-        isOpen: business.isOpen,
-        latitude: business.latitude,
-        longitude: business.longitude,
-        geofenceRadius: business.geofenceRadius,
-        description: business.description
-      },
+    return {
+      business: staticData.business,
       services: servicesWithWaitTimes,
       intelligence,
-      currentActivity: {
-        nowServing,
-        nextUp,
-      },
-      chartData
+      currentActivity: { nowServing, nextUp },
+      chartData: staticData.chartData
     };
-
-    // REDIS CACHE: Save to cache with 10 seconds TTL
-    if (this.redisService?.getClient()) {
-      try {
-        await this.redisService.set(cacheKey, JSON.stringify(responseData), 10);
-      } catch (e) {
-        console.error("Redis Cache Write Error", e);
-      }
-    }
-
-    return responseData;
   }
 
   async getDashboardStats(businessId) {

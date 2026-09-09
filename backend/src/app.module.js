@@ -15,6 +15,7 @@ import { QueuesModule } from './queues/queues.module';
 import { QueueEntriesModule } from './queue-entries/queue-entries.module';
 
 import { UtilsController } from './routes/utils.routes';
+import { MetricsController } from './routes/metrics.routes';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { UtilsController } from './routes/utils.routes';
     QueuesModule,
     QueueEntriesModule,
   ],
-  controllers: [AppController, UtilsController],
+  controllers: [AppController, UtilsController, MetricsController],
   providers: [
     AppService,
     {

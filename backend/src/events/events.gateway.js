@@ -1,14 +1,45 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket } from '@nestjs/websockets';
-import { Bind } from '@nestjs/common';
+import { Bind, Injectable, Dependencies } from '@nestjs/common';
+import { RedisService } from '../redis/redis.service';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
   },
 })
+@Dependencies(RedisService)
 export class EventsGateway {
   @WebSocketServer()
   server;
+
+  constructor(redisService) {
+    this.redisService = redisService;
+  }
+
+  onModuleInit() {
+    // Subscribe to Redis pub/sub for queue updates
+    if (this.redisService) {
+      this.redisService.subscribe('queue-updates', (payload) => {
+        if (payload && payload.queueId) {
+          const eventName = payload.eventType || 'queue_updated';
+          this.server.to(`queue_${payload.queueId}`).emit(eventName, payload);
+          // Keep backwards compatibility for old listeners
+          if (eventName !== 'queue_updated') {
+            this.server.to(`queue_${payload.queueId}`).emit('queue_updated', payload);
+          }
+          
+          if (payload.businessId) {
+            const bizEventName = payload.eventType ? `business_${payload.eventType}` : 'business_updated';
+            this.server.to(`business_${payload.businessId}`).emit(bizEventName, payload);
+            if (bizEventName !== 'business_updated') {
+              this.server.to(`business_${payload.businessId}`).emit('business_updated', payload);
+            }
+          }
+        }
+      });
+    }
+  }
 
   @SubscribeMessage('join-queue-room')
   @Bind(MessageBody(), ConnectedSocket())

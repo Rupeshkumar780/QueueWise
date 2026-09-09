@@ -1,15 +1,54 @@
 import { Injectable, Dependencies, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { calculateDistanceKm } from '../utils/geo.util';
-import { EventsGateway } from '../events/events.gateway';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
-@Dependencies(PrismaService, EventsGateway, RedisService)
+@Dependencies(PrismaService, RedisService)
 export class QueueEntriesService {
-  constructor(prisma, eventsGateway) {
+  constructor(prisma, redisService) {
     this.prisma = prisma;
-    this.eventsGateway = eventsGateway;
+    this.redisService = redisService;
+  }
+
+  async publishQueueUpdate(queueId, businessId, eventType = 'queue.updated') {
+    if (!businessId) {
+      const queue = await this.prisma.queue.findUnique({ where: { id: queueId } });
+      businessId = queue?.businessId;
+    }
+    if (this.redisService && businessId) {
+      // Step 15: Granular event publishing
+      await this.redisService.publish('queue-updates', { queueId, businessId, eventType });
+      
+      // Step 13: Event-Driven Invalidation
+      await this.redisService.del(`business:${businessId}:landing_static`);
+      
+      this.updateQueueSnapshot(queueId, businessId);
+    }
+  }
+
+  async updateQueueSnapshot(queueId, businessId) {
+    if (!this.redisService) return;
+    
+    // Improvement 4: Maintain lightweight read-optimized state
+    const [queue, waitingCount, activeCounters] = await Promise.all([
+      this.prisma.queue.findUnique({ where: { id: queueId }, include: { service: true } }),
+      this.prisma.queueEntry.count({ where: { queueId, status: 'WAITING' } }),
+      this.prisma.counter.count({ where: { businessId, status: { not: 'OFFLINE' } } })
+    ]);
+
+    if (queue) {
+      const estimatedWait = waitingCount * (queue.service?.estimatedDuration || 15);
+      const snapshot = {
+        currentToken: queue.currentToken,
+        waiting: waitingCount,
+        activeCounters,
+        estimatedWait,
+        status: queue.status,
+        updatedAt: new Date().toISOString()
+      };
+      await this.redisService.set(`queue:${queueId}:snapshot`, JSON.stringify(snapshot));
+    }
   }
 
   async joinQueue(queueId, userId, locationData) {
@@ -64,23 +103,13 @@ export class QueueEntriesService {
         }
       }
       
-      let newTokenNumber;
-      if (this.redisService?.getClient()) {
-        const redisKey = `queue:${queueId}:token`;
-        newTokenNumber = await this.redisService.incr(redisKey);
-        if (newTokenNumber <= queue.currentToken) {
-           newTokenNumber = queue.currentToken + 1;
-           await this.redisService.set(redisKey, newTokenNumber);
-        }
-      } else {
-        newTokenNumber = queue.currentToken + 1;
-      }
-
-      // Update queue token
-      await tx.queue.update({
+      // Authoritative database increment to guarantee zero duplicates
+      const updatedQueue = await tx.queue.update({
         where: { id: queueId },
-        data: { currentToken: newTokenNumber },
+        data: { currentToken: { increment: 1 } },
+        select: { currentToken: true }
       });
+      const newTokenNumber = updatedQueue.currentToken;
 
       // Create entry
       const entry = await tx.queueEntry.create({
@@ -96,7 +125,7 @@ export class QueueEntriesService {
         }
       });
       
-      this.eventsGateway.broadcastQueueUpdate(queueId, queue.businessId);
+      this.publishQueueUpdate(queueId, queue.businessId, 'queue.customer_joined');
       return entry;
     });
   }
@@ -118,7 +147,7 @@ export class QueueEntriesService {
       include: { queue: true }
     });
     
-    this.eventsGateway.broadcastQueueUpdate(updated.queueId, updated.queue.businessId);
+    this.publishQueueUpdate(updated.queueId, updated.queue.businessId, 'queue.customer_cancelled');
     return updated;
   }
 
@@ -276,7 +305,7 @@ export class QueueEntriesService {
         });
       }
 
-      this.eventsGateway.broadcastQueueUpdate(queueId);
+      this.publishQueueUpdate(queueId, undefined, 'queue.customer_called');
       return updated;
     });
   }
@@ -294,7 +323,7 @@ export class QueueEntriesService {
           data: { status: 'AVAILABLE', currentQueueEntryId: null }
         });
       }
-      this.eventsGateway.broadcastQueueUpdate(entry.queueId);
+      this.publishQueueUpdate(entry.queueId, undefined, 'queue.customer_completed');
       return entry;
     });
   }
@@ -312,7 +341,7 @@ export class QueueEntriesService {
           data: { status: 'AVAILABLE', currentQueueEntryId: null }
         });
       }
-      this.eventsGateway.broadcastQueueUpdate(entry.queueId);
+      this.publishQueueUpdate(entry.queueId, undefined, 'queue.customer_noshow');
       return entry;
     });
   }
